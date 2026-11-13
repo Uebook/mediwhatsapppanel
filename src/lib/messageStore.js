@@ -28,6 +28,10 @@ if (!globalThis.__wa_reported_contacts) {
   globalThis.__wa_reported_contacts = new Map();
 }
 
+if (!globalThis.__wa_takeover_contacts) {
+  globalThis.__wa_takeover_contacts = new Map();
+}
+
 export function normalizeTimestampMs(ts) {
   if (!ts) return Date.now();
   const num = Number(ts);
@@ -380,5 +384,127 @@ export const messageStore = {
     if (!cleanNumber) return false;
     const list = globalThis.__wa_reported_contacts.get(cleanNumber);
     return Array.isArray(list) && list.length > 0;
+  },
+
+  async isHumanTakeoverActive(phoneNumber) {
+    const cleanNumber = String(phoneNumber).replace(/\D/g, "").slice(-10);
+    if (!cleanNumber) return false;
+
+    // 1. Fast in-memory check
+    if (globalThis.__wa_takeover_contacts.has(cleanNumber)) {
+      const entry = globalThis.__wa_takeover_contacts.get(cleanNumber);
+      if (entry && typeof entry.active === "boolean") {
+        return entry.active;
+      }
+    }
+
+    // 2. Cross-instance verification via Supabase whatsapp_messages table
+    try {
+      const url = `${SUPABASE_URL}/rest/v1/whatsapp_messages?phone_number=eq.${cleanNumber}&order=raw_timestamp.desc&limit=20`;
+      const res = await fetch(url, {
+        headers: {
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const rows = await res.json();
+        if (Array.isArray(rows) && rows.length > 0) {
+          for (const row of rows) {
+            const txt = (row.text || "").toLowerCase();
+            // System resume message releases takeover
+            if (row.sender === "system" && (txt.includes("bot resumed") || txt.includes("released session"))) {
+              globalThis.__wa_takeover_contacts.set(cleanNumber, {
+                active: false,
+                agentName: null,
+                updatedAt: Date.now(),
+              });
+              return false;
+            }
+            // System claim message activates takeover
+            if (
+              row.sender === "system" &&
+              (txt.includes("human takeover active") ||
+                txt.includes("claimed conversation") ||
+                txt.includes("bot paused"))
+            ) {
+              globalThis.__wa_takeover_contacts.set(cleanNumber, {
+                active: true,
+                agentName: row.agent_name || "Support Desk",
+                updatedAt: row.raw_timestamp || Date.now(),
+              });
+              return true;
+            }
+            // Agent manual dispatch within 24 hours implies active takeover unless explicitly released
+            if (
+              row.sender === "agent" ||
+              row.sender === "human" ||
+              (row.agent_name &&
+                row.agent_name !== "bot" &&
+                row.agent_name !== "MediConnect Assistant" &&
+                row.agent_name !== "System")
+            ) {
+              const rowTs = normalizeTimestampMs(row.raw_timestamp);
+              if (Date.now() - rowTs < 24 * 3600 * 1000) {
+                globalThis.__wa_takeover_contacts.set(cleanNumber, {
+                  active: true,
+                  agentName: row.agent_name || "Support Desk",
+                  updatedAt: rowTs,
+                });
+                return true;
+              }
+              return false;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[messageStore] isHumanTakeoverActive Supabase fetch error:", e.message);
+    }
+
+    return false;
+  },
+
+  async setHumanTakeover(phoneNumber, active, agentName = "Support Desk") {
+    const cleanNumber = String(phoneNumber).replace(/\D/g, "").slice(-10);
+    if (!cleanNumber) return false;
+
+    const isActive = Boolean(active);
+    globalThis.__wa_takeover_contacts.set(cleanNumber, {
+      active: isActive,
+      agentName: isActive ? (agentName || "Support Desk") : null,
+      updatedAt: Date.now(),
+    });
+
+    // Record system notification message into Supabase and message store so both history and serverless instances stay synchronized
+    const now = Date.now();
+    const istTime = formatISTTime(now);
+    const systemMsg = {
+      id: "sys-" + (isActive ? "claim-" : "resume-") + now,
+      sender: "system",
+      agentName: isActive ? agentName : "System",
+      text: isActive
+        ? `Human Takeover Active: ${agentName || "Support Desk"} claimed conversation. Bot paused.`
+        : "Support Agent released session. Automated WhatsApp bot resumed.",
+      time: istTime,
+      status: "delivered",
+      rawTimestamp: now,
+      isSystem: true,
+    };
+
+    try {
+      await this.addMessage(cleanNumber, systemMsg);
+    } catch (e) {}
+
+    return isActive;
+  },
+
+  async getTakeoverContacts() {
+    const result = {};
+    for (const [key, val] of globalThis.__wa_takeover_contacts.entries()) {
+      result[key] = val;
+    }
+    return result;
   },
 };

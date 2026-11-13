@@ -51,7 +51,10 @@ export default function TakeoversPage() {
           );
 
           let takeoverStatus = existing.takeoverStatus;
-          if (!takeoverStatus) {
+          const serverTakeover = msgData.takeoverContacts ? msgData.takeoverContacts[cleanDigits] : null;
+          if (serverTakeover !== undefined && serverTakeover !== null) {
+            takeoverStatus = serverTakeover.active ? "HUMAN_OWNERSHIP_ACTIVE" : "ACTIVE_AUTOMATION";
+          } else if (!takeoverStatus) {
             if (hasAgentMsg) takeoverStatus = "HUMAN_OWNERSHIP_ACTIVE";
             else if (patientWantsHuman) takeoverStatus = "HUMAN_TAKEOVER_REQUESTED";
             else takeoverStatus = "ACTIVE_AUTOMATION";
@@ -69,7 +72,7 @@ export default function TakeoversPage() {
               serviceType: "Meta WhatsApp Cloud API Desk",
               workflowState: "ACTIVE",
               takeoverStatus: takeoverStatus,
-              assignedAgent: existing.assignedAgent || (takeoverStatus === "HUMAN_OWNERSHIP_ACTIVE" ? "Support Agent" : "Unassigned"),
+              assignedAgent: serverTakeover?.agentName || existing.assignedAgent || (takeoverStatus === "HUMAN_OWNERSHIP_ACTIVE" ? "Muskan Sharma" : "Unassigned"),
               lastMessage: lastMsg ? lastMsg.text : "Active Thread",
               lastActivity: lastMsg ? lastMsg.time : "Live",
               messages: msgs,
@@ -91,13 +94,24 @@ export default function TakeoversPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleReturnToBot = (mobile) => {
+  const handleReturnToBot = async (mobile) => {
     try {
+      const cleanDigits = (mobile || "").replace(/\D/g, "").slice(-10);
+      await fetch("/api/whatsapp/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "set_takeover",
+          mobile: cleanDigits,
+          active: false,
+        }),
+      });
+
       const saved = localStorage.getItem("mediconnect_wa_live_conversations");
       if (saved) {
         const parsed = JSON.parse(saved) || [];
         const updated = parsed.map((c) => {
-          if (c.mobile === mobile) {
+          if ((c.mobile || "").replace(/\D/g, "").slice(-10) === cleanDigits) {
             return {
               ...c,
               takeoverStatus: "ACTIVE_AUTOMATION",

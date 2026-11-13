@@ -855,6 +855,13 @@ export async function POST(req) {
           continue;
         }
 
+        // Check if Human Takeover / Agent Claim is active
+        const isTakeoverActive = await messageStore.isHumanTakeoverActive(fromNumber);
+        if (isTakeoverActive) {
+          console.log(`[WA WEBHOOK PANEL] Contact ${fromNumber} has HUMAN_OWNERSHIP_ACTIVE. Suppressing bot auto-replies.`);
+          continue;
+        }
+
         const lowerText = textContent.toLowerCase().trim();
 
         const recordBotMessage = async (text, options = {}) => {

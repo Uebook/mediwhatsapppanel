@@ -15,23 +15,27 @@ export async function GET(req) {
     const allMessages = await messageStore.getAllMessages();
     const blockedContacts = await messageStore.getBlockedContacts();
     const reportedContacts = await messageStore.getReportedContacts();
+    const takeoverContacts = await messageStore.getTakeoverContacts();
     return NextResponse.json({
       success: true,
       allMessages,
       blockedContacts,
       reportedContacts,
+      takeoverContacts,
     });
   }
 
   const messages = await messageStore.getMessages(mobile);
   const isBlocked = await messageStore.isContactBlocked(mobile);
   const isReported = await messageStore.isContactReported(mobile);
+  const isTakeoverActive = await messageStore.isHumanTakeoverActive(mobile);
   return NextResponse.json({
     success: true,
     mobile,
     messages,
     isBlocked,
     isReported,
+    isTakeoverActive,
   });
 }
 
@@ -100,6 +104,24 @@ export async function POST(req) {
         mobile: cleanNumber,
         report,
         isBlocked: Boolean(alsoBlock),
+      });
+    }
+
+    if (body.action === "set_takeover") {
+      const { mobile, active, agentName } = body;
+      const cleanNumber = String(mobile || "").replace(/\D/g, "").slice(-10);
+      if (!cleanNumber) {
+        return NextResponse.json({ success: false, error: "mobile is required" }, { status: 400 });
+      }
+      const updatedActive = await messageStore.setHumanTakeover(
+        cleanNumber,
+        Boolean(active),
+        agentName
+      );
+      return NextResponse.json({
+        success: true,
+        mobile: cleanNumber,
+        isTakeoverActive: updatedActive,
       });
     }
 

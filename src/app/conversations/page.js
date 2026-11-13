@@ -443,7 +443,15 @@ export default function ConversationsPage() {
           if (cleanDigits === "1800227575") pName = "1800227575";
 
           const hasAgentMsg = sortedMsgs.some((m) => m.sender === "agent");
-          const takeover = existing.takeoverStatus || (hasAgentMsg ? "HUMAN_OWNERSHIP_ACTIVE" : "ACTIVE_AUTOMATION");
+          const serverTakeover = data.takeoverContacts ? data.takeoverContacts[cleanDigits] : null;
+          const takeover =
+            serverTakeover !== undefined && serverTakeover !== null
+              ? (serverTakeover.active ? "HUMAN_OWNERSHIP_ACTIVE" : "ACTIVE_AUTOMATION")
+              : (existing.takeoverStatus || (hasAgentMsg ? "HUMAN_OWNERSHIP_ACTIVE" : "ACTIVE_AUTOMATION"));
+          const assignedAgent =
+            serverTakeover?.agentName ||
+            existing.assignedAgent ||
+            (takeover === "HUMAN_OWNERSHIP_ACTIVE" ? (currentUser?.name || "Muskan Sharma") : null);
 
           // Calculate unread count based on incoming messages received
           const readInfo = currentReadMap[cleanDigits] || {};
@@ -472,7 +480,7 @@ export default function ConversationsPage() {
             workflowState: isBlocked ? "BLOCKED" : (existing.workflowState || "ACTIVE"),
             escalationTag: existing.escalationTag || "NORMAL",
             takeoverStatus: takeover,
-            assignedAgent: existing.assignedAgent || (takeover === "HUMAN_OWNERSHIP_ACTIVE" ? (currentUser?.name || "Support Desk") : null),
+            assignedAgent: assignedAgent,
             lastMessage: formatLastMessagePreview(lastMsg),
             lastActivity: lastMsg ? formatConversationTimestamp(lastMsg.rawTimestamp, lastMsg.time) : "Recently",
             unreadCount: unreadCount,
@@ -1150,6 +1158,19 @@ export default function ConversationsPage() {
             return c;
           })
         );
+        if (currentConv.takeoverStatus !== "HUMAN_OWNERSHIP_ACTIVE") {
+          const cleanDigits = (currentConv.mobile || "").replace(/\D/g, "").slice(-10);
+          fetch("/api/whatsapp/messages", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "set_takeover",
+              mobile: cleanDigits,
+              active: true,
+              agentName: currentAgentName,
+            }),
+          }).catch(() => {});
+        }
         toast.success(`Sent via Insign to WhatsApp (${currentConv.mobile})`);
       } else {
         const errMsg = data.error || "Failed to dispatch via Insign API";
@@ -1190,11 +1211,12 @@ export default function ConversationsPage() {
     }
   };
 
-  const handleTakeoverToggle = () => {
+  const handleTakeoverToggle = async () => {
     if (!currentConv) return;
     const isCurrentlyTakenOver = currentConv.takeoverStatus === "HUMAN_OWNERSHIP_ACTIVE";
     const nextStatus = isCurrentlyTakenOver ? "ACTIVE_AUTOMATION" : "HUMAN_OWNERSHIP_ACTIVE";
     const agentName = currentUser?.name || "Muskan Sharma";
+    const cleanDigits = (currentConv.mobile || "").replace(/\D/g, "").slice(-10);
 
     setConversations((prev) =>
       prev.map((c) => {
@@ -1226,6 +1248,22 @@ export default function ConversationsPage() {
       toast.success("Returned to Automation (Bot Resumed)");
     } else {
       toast.success(`Human Takeover Activated (${agentName})`);
+    }
+
+    // Persist to server backend so Webhook immediately knows to suppress/resume bot
+    try {
+      await fetch("/api/whatsapp/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "set_takeover",
+          mobile: cleanDigits,
+          active: !isCurrentlyTakenOver,
+          agentName: isCurrentlyTakenOver ? null : agentName,
+        }),
+      });
+    } catch (e) {
+      console.warn("Failed to persist takeover toggle:", e);
     }
   };
 
@@ -2578,6 +2616,19 @@ export default function ConversationsPage() {
                   />
                 </div>
 
+                {/* 4.5. Activate Bot button when Human Takeover is active (placed right by the audio mic / send button) */}
+                {currentConv.takeoverStatus === "HUMAN_OWNERSHIP_ACTIVE" && (
+                  <button
+                    type="button"
+                    onClick={handleTakeoverToggle}
+                    className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-full flex items-center gap-1.5 text-xs font-semibold shadow-xs hover:shadow-sm transition cursor-pointer flex-shrink-0 animate-in fade-in zoom-in-95 duration-150"
+                    title="Activate WhatsApp Bot (Resume Automated Bot Replies)"
+                  >
+                    <Bot className="w-4 h-4" />
+                    <span>Activate Bot</span>
+                  </button>
+                )}
+
                 {/* 5. Right Action: Send Button when typing or mic when empty */}
                 {replyText.trim() || stagedAttachment || selectedTemplate ? (
                   <button
@@ -2598,7 +2649,7 @@ export default function ConversationsPage() {
                     onClick={() => {
                       audioInputRef.current?.click();
                     }}
-                    className="p-2.5 text-[#54656f] hover:text-slate-800 rounded-full flex items-center justify-center transition cursor-pointer"
+                    className="p-2.5 text-[#54656f] hover:text-slate-800 rounded-full flex items-center justify-center transition cursor-pointer flex-shrink-0"
                     title="Send Audio / Voice"
                   >
                     <Mic className="w-5 h-5" />
