@@ -470,7 +470,7 @@ export default function ConversationsPage() {
             patientId: existing.patientId || `PT-${cleanDigits.slice(-5)}`,
             serviceType: existing.serviceType || "Meta WhatsApp Cloud API Desk",
             workflowState: isBlocked ? "BLOCKED" : (existing.workflowState || "ACTIVE"),
-            escalationTag: existing.escalationTag || (sortedMsgs.some((m) => m.status === "failed") ? "HIGH" : "NORMAL"),
+            escalationTag: existing.escalationTag || "NORMAL",
             takeoverStatus: takeover,
             assignedAgent: existing.assignedAgent || (takeover === "HUMAN_OWNERSHIP_ACTIVE" ? (currentUser?.name || "Support Desk") : null),
             lastMessage: formatLastMessagePreview(lastMsg),

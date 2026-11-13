@@ -49,7 +49,7 @@ export default function DashboardPage() {
             totalMsgs += msgs.length;
             totalDelivered += msgs.filter((m) => m.status === "delivered" || m.status === "received").length;
             if (msgs.some((m) => m.sender === "agent")) takeoversCount++;
-            if (msgs.some((m) => m.status === "failed")) escalationsCount++;
+            if (msgs.some((m) => m.sender === "patient" && /(urgent|emergency|doctor|pain|help|delay|not working|panic|hospital|fever|serious)/i.test(m.text || ""))) escalationsCount++;
           }
 
           const successRate = totalMsgs > 0 ? Math.round((totalDelivered / totalMsgs) * 100) : 100;

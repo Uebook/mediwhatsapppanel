@@ -54,8 +54,7 @@ export default function EscalationsPage() {
           const existing = savedMap[cleanDigits] || {};
           const lastMsg = msgs[msgs.length - 1];
 
-          // Identify real escalation triggers
-          const hasFailedMsg = msgs.some((m) => m.status === "failed");
+          // Identify real clinical & patient escalation triggers (patient keywords or explicit agent triage)
           const urgentMsg = msgs.slice(-5).find((m) =>
             m.sender === "patient" &&
             /(urgent|emergency|doctor|pain|help|delay|not working|panic|hospital|fever|serious)/i.test(m.text || "")
@@ -63,11 +62,10 @@ export default function EscalationsPage() {
 
           let priority = existing.escalationTag;
           if (!priority || priority === "NORMAL") {
-            if (hasFailedMsg) priority = "HIGH";
-            else if (urgentMsg) priority = "MEDIUM";
+            if (urgentMsg) priority = "HIGH";
           }
 
-          if (priority === "HIGH" || priority === "MEDIUM") {
+          if (priority === "HIGH" || priority === "MEDIUM" || priority === "P1 Critical" || priority === "Follow-up Required") {
             let pName = existing.patientName || `WhatsApp User (+91 ${cleanDigits.slice(0, 5)} ${cleanDigits.slice(5)})`;
             if (cleanDigits === "8439993033") pName = "Support Desk (+91 84399 93033)";
 
@@ -79,11 +77,9 @@ export default function EscalationsPage() {
               careEpisodeId: existing.careEpisodeId || "CE-" + cleanDigits.slice(-5),
               service: "Live WhatsApp Consultation & Care SLA",
               escalationTag: priority,
-              triggerReason: hasFailedMsg
-                ? "Outbound Meta message dispatch failed"
-                : urgentMsg
+              triggerReason: urgentMsg
                 ? `Patient trigger keyword: "${urgentMsg.text?.slice(0, 45)}..."`
-                : "Clinical SLA triage threshold exceeded",
+                : (existing.escalationTag ? `Agent tagged priority: ${existing.escalationTag}` : "Clinical SLA triage threshold exceeded"),
               lastMessage: lastMsg ? lastMsg.text : "Active Thread",
               lastActivity: lastMsg ? lastMsg.time : "Recently",
               assignedAgent: existing.assignedAgent || null,

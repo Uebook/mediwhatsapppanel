@@ -47,8 +47,10 @@ export default function Sidebar({ open, onToggle, mobileOpen, onCloseMobile }) {
 
         for (const [phone, msgs] of Object.entries(msgData.allMessages)) {
           if (msgs.some((m) => m.sender === "agent")) takeoversCount++;
-          if (msgs.some((m) => m.status === "failed")) {
+          if (msgs.some((m) => m.sender === "patient" && /(urgent|emergency|doctor|pain|help|delay|not working|panic|hospital|fever|serious)/i.test(m.text || ""))) {
             escalationsCount++;
+          }
+          if (msgs.some((m) => m.status === "failed")) {
             recoveryCount++;
           }
         }
