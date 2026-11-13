@@ -1810,6 +1810,7 @@ export default function ConversationsPage() {
                                         alt={m.media.name || "Photo attachment"}
                                         className="rounded-xl max-h-72 w-auto max-w-full object-cover transition hover:opacity-95"
                                         loading="lazy"
+                                        onLoad={() => scrollToBottom(false)}
                                       />
                                       <div className="flex items-center justify-between px-2.5 py-1.5 bg-black/60 text-white text-[10px] backdrop-blur-xs rounded-b-xl absolute bottom-0 inset-x-0 opacity-0 group-hover:opacity-100 transition">
                                         <span className="truncate max-w-[200px] flex items-center gap-1 font-medium">
@@ -1998,6 +1999,7 @@ export default function ConversationsPage() {
                                         src={m.media.url}
                                         alt={m.media.name || "Attachment"}
                                         className="rounded-xl max-h-72 w-auto max-w-full object-cover transition hover:opacity-95"
+                                        onLoad={() => scrollToBottom(false)}
                                       />
                                       <div className="flex items-center justify-between px-2.5 py-1.5 bg-black/60 text-white text-[10px] backdrop-blur-xs rounded-b-xl absolute bottom-0 inset-x-0 opacity-0 group-hover:opacity-100 transition">
                                         <span className="truncate max-w-[200px] flex items-center gap-1 font-medium">
@@ -2228,6 +2230,7 @@ export default function ConversationsPage() {
                                         src={displayImg}
                                         alt={parsedDocName}
                                         className="w-11 h-11 rounded-full object-cover border-2 border-white shadow-xs bg-sky-100 flex-shrink-0"
+                                        onLoad={() => scrollToBottom(false)}
                                         onError={(e) => {
                                           e.target.style.display = "none";
                                         }}
