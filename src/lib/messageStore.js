@@ -20,6 +20,10 @@ if (!globalThis.__wa_messages_store) {
   globalThis.__wa_messages_store = new Map();
 }
 
+if (!globalThis.__wa_blocked_contacts) {
+  globalThis.__wa_blocked_contacts = new Set();
+}
+
 export function normalizeTimestampMs(ts) {
   if (!ts) return Date.now();
   const num = Number(ts);
@@ -314,5 +318,26 @@ export const messageStore = {
         });
       } catch (e) {}
     }
+  },
+
+  async isContactBlocked(phoneNumber) {
+    const cleanNumber = String(phoneNumber).replace(/\D/g, "").slice(-10);
+    if (!cleanNumber) return false;
+    return globalThis.__wa_blocked_contacts.has(cleanNumber);
+  },
+
+  async toggleBlock(phoneNumber, blocked) {
+    const cleanNumber = String(phoneNumber).replace(/\D/g, "").slice(-10);
+    if (!cleanNumber) return false;
+    if (blocked) {
+      globalThis.__wa_blocked_contacts.add(cleanNumber);
+    } else {
+      globalThis.__wa_blocked_contacts.delete(cleanNumber);
+    }
+    return Boolean(blocked);
+  },
+
+  async getBlockedContacts() {
+    return Array.from(globalThis.__wa_blocked_contacts);
   },
 };

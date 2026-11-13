@@ -848,6 +848,13 @@ export async function POST(req) {
         await messageStore.addMessage(fromNumber, newIncomingMsg);
         console.log(`[WA WEBHOOK PANEL] Saved message from ${fromNumber}: ${textContent} (HasMedia: ${Boolean(mediaAttachment)}, Button ID: ${buttonId}, IsFirst: ${isFirstMessage})`);
 
+        // Check if contact is blocked by Admin
+        const isBlocked = await messageStore.isContactBlocked(fromNumber);
+        if (isBlocked) {
+          console.log(`[WA WEBHOOK PANEL] Contact ${fromNumber} is BLOCKED. Suppressing bot auto-replies.`);
+          continue;
+        }
+
         const lowerText = textContent.toLowerCase().trim();
 
         const recordBotMessage = async (text, options = {}) => {

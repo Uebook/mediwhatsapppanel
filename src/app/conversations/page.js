@@ -31,6 +31,8 @@ import {
   Sparkles,
   Mic,
   Shield,
+  ShieldCheck,
+  Ban,
   Phone,
   Globe,
   ExternalLink,
@@ -437,6 +439,7 @@ export default function ConversationsPage() {
           // Issue 10: Reset unread count if conversation is currently open
           const isCurrentlyActive = selectedId === "conv-" + cleanDigits;
           const unreadCount = isCurrentlyActive ? 0 : rawUnread;
+          const isBlocked = Boolean(existing.isBlocked || (Array.isArray(data.blockedContacts) && data.blockedContacts.includes(cleanDigits)));
 
           loadedConvs.push({
             id: "conv-" + cleanDigits,
@@ -444,7 +447,7 @@ export default function ConversationsPage() {
             mobile: cleanPhone,
             patientId: existing.patientId || `PT-${cleanDigits.slice(-5)}`,
             serviceType: existing.serviceType || "Meta WhatsApp Cloud API Desk",
-            workflowState: existing.workflowState || "ACTIVE",
+            workflowState: isBlocked ? "BLOCKED" : (existing.workflowState || "ACTIVE"),
             escalationTag: existing.escalationTag || (sortedMsgs.some((m) => m.status === "failed") ? "HIGH" : "NORMAL"),
             takeoverStatus: takeover,
             assignedAgent: existing.assignedAgent || (takeover === "HUMAN_OWNERSHIP_ACTIVE" ? (currentUser?.name || "Support Desk") : null),
@@ -452,6 +455,7 @@ export default function ConversationsPage() {
             lastActivity: lastMsg ? formatConversationTimestamp(lastMsg.rawTimestamp, lastMsg.time) : "Recently",
             unreadCount: unreadCount,
             isUnread: unreadCount > 0,
+            isBlocked: isBlocked,
             messages: sortedMsgs,
           });
         }
@@ -862,6 +866,53 @@ export default function ConversationsPage() {
     }
   };
 
+  const handleToggleBlockContact = async () => {
+    if (!currentConv) return;
+    const isCurrentlyBlocked = Boolean(currentConv.isBlocked);
+    const actionLabel = isCurrentlyBlocked ? "Unblock" : "Block";
+    const cleanMobile = (currentConv.mobile || "").replace(/\D/g, "").slice(-10);
+
+    if (
+      !confirm(
+        `Are you sure you want to ${actionLabel.toLowerCase()} contact ${currentConv.patientName || cleanMobile}?`
+      )
+    ) {
+      return;
+    }
+
+    const newBlockedState = !isCurrentlyBlocked;
+
+    // Optimistically update conversation state
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === currentConv.id
+          ? {
+              ...c,
+              isBlocked: newBlockedState,
+              workflowState: newBlockedState ? "BLOCKED" : "ACTIVE",
+            }
+          : c
+      )
+    );
+    setShowMoreMenu(false);
+
+    try {
+      await fetch("/api/whatsapp/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "toggle_block",
+          mobile: cleanMobile,
+          blocked: newBlockedState,
+        }),
+      });
+      toast.success(newBlockedState ? "Contact Blocked" : "Contact Unblocked");
+    } catch (err) {
+      console.error("Failed to toggle block status:", err);
+      toast.error("Failed to update block status");
+    }
+  };
+
   const handleSendMessage = async (e) => {
     e?.preventDefault();
     if ((!replyText.trim() && !selectedTemplate && !stagedAttachment) || isSending || !currentConv) return;
@@ -1246,9 +1297,16 @@ export default function ConversationsPage() {
                       {/* Info & Last Message */}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1">
-                          <h4 className="text-sm font-semibold text-[#111b21] truncate">
-                            {c.patientName}
-                          </h4>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <h4 className="text-sm font-semibold text-[#111b21] truncate">
+                              {c.patientName}
+                            </h4>
+                            {c.isBlocked && (
+                              <span className="px-1.5 py-0.2 rounded bg-rose-100 text-rose-700 text-[9px] font-bold border border-rose-200 shrink-0">
+                                Blocked
+                              </span>
+                            )}
+                          </div>
                           <span className={`text-[11px] whitespace-nowrap ${hasUnread ? "text-[#00a884] font-semibold" : "text-[#667781]"}`}>
                             {c.lastActivity}
                           </span>
@@ -1306,9 +1364,19 @@ export default function ConversationsPage() {
                 <div>
                   <h3 className="text-sm font-bold text-[#111b21] flex items-center gap-2">
                     {currentConv.patientName}
+                    {currentConv.isBlocked && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold border border-rose-300">
+                        <Ban className="w-3 h-3 text-rose-600" />
+                        <span>Blocked</span>
+                      </span>
+                    )}
                   </h3>
                   <div className="flex items-center gap-1.5 text-[11px] text-[#00a884] font-medium">
-                    <span>online</span>
+                    {currentConv.isBlocked ? (
+                      <span className="text-rose-600 font-semibold">Contact is blocked</span>
+                    ) : (
+                      <span>online</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1432,6 +1500,27 @@ export default function ConversationsPage() {
                       >
                         <X className="w-3.5 h-3.5" />
                         <span>Clear Chat History</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleToggleBlockContact}
+                        className={`w-full px-3 py-2 text-left flex items-center gap-2 cursor-pointer border-t border-slate-100 ${
+                          currentConv.isBlocked
+                            ? "hover:bg-emerald-50 text-emerald-700"
+                            : "hover:bg-rose-50 text-rose-600"
+                        }`}
+                      >
+                        {currentConv.isBlocked ? (
+                          <>
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="font-medium">Unblock Contact</span>
+                          </>
+                        ) : (
+                          <>
+                            <Ban className="w-3.5 h-3.5 text-rose-600" />
+                            <span className="font-medium">Block Contact</span>
+                          </>
+                        )}
                       </button>
                       <button
                         type="button"
@@ -2246,7 +2335,28 @@ export default function ConversationsPage() {
 
             {/* Bottom Message Input Bar */}
             <div className="px-3 sm:px-4 py-2.5 bg-[#f0f2f5] border-t border-slate-200/90 relative z-20 flex-shrink-0">
-              <form onSubmit={handleSendMessage} className="max-w-3xl mx-auto flex items-center gap-2">
+              {currentConv.isBlocked ? (
+                <div className="max-w-3xl mx-auto flex items-center justify-between p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs shadow-2xs">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center shrink-0">
+                      <Ban className="w-4 h-4 text-rose-600" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-rose-900">This contact is currently blocked</p>
+                      <p className="text-[11px] text-rose-700">Messaging is suspended and incoming bot auto-responses are silenced.</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleToggleBlockContact}
+                    className="px-3.5 py-2 bg-white border border-rose-300 text-rose-700 hover:bg-rose-100 rounded-xl font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                  >
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    <span>Unblock Contact</span>
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleSendMessage} className="max-w-3xl mx-auto flex items-center gap-2">
                 {/* 1. Emoji Picker Button 😊 */}
                 <button
                   type="button"
@@ -2339,6 +2449,7 @@ export default function ConversationsPage() {
                   </button>
                 )}
               </form>
+              )}
             </div>
           </div>
         ) : (
@@ -2377,7 +2488,11 @@ export default function ConversationsPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Status:</span>
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                  currentConv.isBlocked
+                    ? "bg-rose-50 text-rose-700 border-rose-200"
+                    : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                }`}>
                   {currentConv.workflowState}
                 </span>
               </div>
@@ -2386,6 +2501,29 @@ export default function ConversationsPage() {
                 <span className="font-medium text-slate-700">
                   {currentConv.takeoverStatus === "HUMAN_OWNERSHIP_ACTIVE" ? "Human Agent" : "Bot Automated"}
                 </span>
+              </div>
+              <div className="pt-2 border-t border-slate-200/70">
+                <button
+                  type="button"
+                  onClick={handleToggleBlockContact}
+                  className={`w-full py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 border transition cursor-pointer ${
+                    currentConv.isBlocked
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100"
+                      : "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
+                  }`}
+                >
+                  {currentConv.isBlocked ? (
+                    <>
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Unblock Contact</span>
+                    </>
+                  ) : (
+                    <>
+                      <Ban className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Block Contact</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
 

@@ -4,20 +4,30 @@ import { messageStore } from "@/lib/messageStore";
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const mobile = searchParams.get("mobile");
+  const action = searchParams.get("action");
+
+  if (action === "get_blocked_contacts") {
+    const blockedContacts = await messageStore.getBlockedContacts();
+    return NextResponse.json({ success: true, blockedContacts });
+  }
 
   if (!mobile) {
     const allMessages = await messageStore.getAllMessages();
+    const blockedContacts = await messageStore.getBlockedContacts();
     return NextResponse.json({
       success: true,
       allMessages,
+      blockedContacts,
     });
   }
 
   const messages = await messageStore.getMessages(mobile);
+  const isBlocked = await messageStore.isContactBlocked(mobile);
   return NextResponse.json({
     success: true,
     mobile,
     messages,
+    isBlocked,
   });
 }
 
@@ -49,10 +59,25 @@ export async function PATCH(req) {
   }
 }
 
-// POST endpoint to allow simulating or injecting incoming patient replies directly
+// POST endpoint to allow simulating or injecting incoming patient replies directly, and toggling block status
 export async function POST(req) {
   try {
     const body = await req.json();
+
+    if (body.action === "toggle_block") {
+      const { mobile, blocked } = body;
+      const cleanNumber = String(mobile || "").replace(/\D/g, "").slice(-10);
+      if (!cleanNumber) {
+        return NextResponse.json({ success: false, error: "mobile is required" }, { status: 400 });
+      }
+      const updatedBlocked = await messageStore.toggleBlock(cleanNumber, Boolean(blocked));
+      return NextResponse.json({
+        success: true,
+        mobile: cleanNumber,
+        isBlocked: updatedBlocked,
+      });
+    }
+
     const { mobile, text, sender = "patient", media } = body;
 
     if (!mobile || (!text && !media)) {
