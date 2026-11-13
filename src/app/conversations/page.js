@@ -33,6 +33,7 @@ import {
   Shield,
   ShieldCheck,
   Ban,
+  Flag,
   Phone,
   Globe,
   ExternalLink,
@@ -292,6 +293,13 @@ export default function ConversationsPage() {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showContactInfo, setShowContactInfo] = useState(false);
 
+  // Report Contact Modal State
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState("Spam or unsolicited messages");
+  const [reportDetails, setReportDetails] = useState("");
+  const [reportAlsoBlock, setReportAlsoBlock] = useState(true);
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+
   // Quick simulate incoming reply state
   const [showSimulateModal, setShowSimulateModal] = useState(false);
   const [simulatedText, setSimulatedText] = useState("");
@@ -440,6 +448,7 @@ export default function ConversationsPage() {
           const isCurrentlyActive = selectedId === "conv-" + cleanDigits;
           const unreadCount = isCurrentlyActive ? 0 : rawUnread;
           const isBlocked = Boolean(existing.isBlocked || (Array.isArray(data.blockedContacts) && data.blockedContacts.includes(cleanDigits)));
+          const isReported = Boolean(existing.isReported || (data.reportedContacts && data.reportedContacts[cleanDigits]));
 
           loadedConvs.push({
             id: "conv-" + cleanDigits,
@@ -456,6 +465,7 @@ export default function ConversationsPage() {
             unreadCount: unreadCount,
             isUnread: unreadCount > 0,
             isBlocked: isBlocked,
+            isReported: isReported,
             messages: sortedMsgs,
           });
         }
@@ -913,6 +923,60 @@ export default function ConversationsPage() {
     }
   };
 
+  const handleOpenReportModal = () => {
+    setShowMoreMenu(false);
+    setReportReason("Spam or unsolicited messages");
+    setReportDetails("");
+    setReportAlsoBlock(!currentConv?.isBlocked);
+    setShowReportModal(true);
+  };
+
+  const handleSubmitReport = async (e) => {
+    e?.preventDefault();
+    if (!currentConv) return;
+    const cleanMobile = (currentConv.mobile || "").replace(/\D/g, "").slice(-10);
+    setIsSubmittingReport(true);
+    try {
+      await fetch("/api/whatsapp/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "report_contact",
+          mobile: cleanMobile,
+          reason: reportReason,
+          details: reportDetails,
+          reportedBy: currentUser?.name || "Support Desk",
+          alsoBlock: reportAlsoBlock,
+        }),
+      });
+
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === currentConv.id
+            ? {
+                ...c,
+                isReported: true,
+                isBlocked: reportAlsoBlock ? true : c.isBlocked,
+                workflowState: reportAlsoBlock ? "BLOCKED" : (c.workflowState || "ACTIVE"),
+              }
+            : c
+        )
+      );
+
+      toast.success(
+        reportAlsoBlock
+          ? "Contact reported and blocked"
+          : "Report submitted to compliance review"
+      );
+      setShowReportModal(false);
+    } catch (err) {
+      console.error("Failed to report contact:", err);
+      toast.error("Failed to submit report");
+    } finally {
+      setIsSubmittingReport(false);
+    }
+  };
+
   const handleSendMessage = async (e) => {
     e?.preventDefault();
     if ((!replyText.trim() && !selectedTemplate && !stagedAttachment) || isSending || !currentConv) return;
@@ -1306,6 +1370,11 @@ export default function ConversationsPage() {
                                 Blocked
                               </span>
                             )}
+                            {c.isReported && (
+                              <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-700 text-[9px] font-bold border border-amber-200 shrink-0">
+                                Reported
+                              </span>
+                            )}
                           </div>
                           <span className={`text-[11px] whitespace-nowrap ${hasUnread ? "text-[#00a884] font-semibold" : "text-[#667781]"}`}>
                             {c.lastActivity}
@@ -1368,6 +1437,12 @@ export default function ConversationsPage() {
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold border border-rose-300">
                         <Ban className="w-3 h-3 text-rose-600" />
                         <span>Blocked</span>
+                      </span>
+                    )}
+                    {currentConv.isReported && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-300">
+                        <Flag className="w-3 h-3 text-amber-600" />
+                        <span>Reported</span>
                       </span>
                     )}
                   </h3>
@@ -1521,6 +1596,14 @@ export default function ConversationsPage() {
                             <span className="font-medium">Block Contact</span>
                           </>
                         )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleOpenReportModal}
+                        className="w-full px-3 py-2 text-left hover:bg-amber-50 text-amber-700 flex items-center gap-2 cursor-pointer border-t border-slate-100"
+                      >
+                        <Flag className="w-3.5 h-3.5 text-amber-600" />
+                        <span className="font-medium">Report Contact</span>
                       </button>
                       <button
                         type="button"
@@ -2502,7 +2585,7 @@ export default function ConversationsPage() {
                   {currentConv.takeoverStatus === "HUMAN_OWNERSHIP_ACTIVE" ? "Human Agent" : "Bot Automated"}
                 </span>
               </div>
-              <div className="pt-2 border-t border-slate-200/70">
+              <div className="pt-2 border-t border-slate-200/70 space-y-1.5">
                 <button
                   type="button"
                   onClick={handleToggleBlockContact}
@@ -2523,6 +2606,14 @@ export default function ConversationsPage() {
                       <span>Block Contact</span>
                     </>
                   )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenReportModal}
+                  className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 transition cursor-pointer"
+                >
+                  <Flag className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Report Contact</span>
                 </button>
               </div>
             </div>
@@ -2842,6 +2933,135 @@ export default function ConversationsPage() {
                   {t.label}
                 </button>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Report Contact Modal */}
+      {showReportModal && currentConv && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 max-w-md w-full space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700 shrink-0">
+                  <Flag className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Report Contact</h3>
+                  <p className="text-[11px] text-slate-500">Flag for safety, spam, or compliance review</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReportModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Target Contact Info */}
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center justify-between text-xs">
+              <div>
+                <p className="font-semibold text-slate-800">{currentConv.patientName}</p>
+                <p className="text-slate-500 font-mono text-[11px]">{currentConv.mobile}</p>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-bold">
+                {currentConv.patientId}
+              </span>
+            </div>
+
+            {/* Reason Choices */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-700">
+                Reason for reporting <span className="text-rose-500">*</span>
+              </label>
+              <div className="space-y-1.5 text-xs">
+                {[
+                  { id: "spam", label: "Spam or unsolicited promotional messages" },
+                  { id: "harassment", label: "Harassment, abusive, or threatening language" },
+                  { id: "fraud", label: "Impersonation, scam, or fraudulent requests" },
+                  { id: "inappropriate", label: "Inappropriate or non-medical queries" },
+                  { id: "other", label: "Other suspicious behavior" },
+                ].map((item) => (
+                  <label
+                    key={item.id}
+                    className={`flex items-center gap-2.5 p-2 rounded-xl border cursor-pointer transition ${
+                      reportReason === item.label
+                        ? "bg-amber-50/70 border-amber-300 text-amber-950 font-medium"
+                        : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="reportReason"
+                      value={item.label}
+                      checked={reportReason === item.label}
+                      onChange={(e) => setReportReason(e.target.value)}
+                      className="text-amber-600 focus:ring-amber-500 w-3.5 h-3.5 cursor-pointer"
+                    />
+                    <span>{item.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Additional details */}
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-slate-700">
+                Additional Details (Optional)
+              </label>
+              <textarea
+                rows={2}
+                value={reportDetails}
+                onChange={(e) => setReportDetails(e.target.value)}
+                placeholder="Briefly describe what happened for compliance audit..."
+                className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+              />
+            </div>
+
+            {/* Checkbox: Also block */}
+            <label className="flex items-start gap-2.5 p-2.5 bg-rose-50/80 border border-rose-200 rounded-xl cursor-pointer">
+              <input
+                type="checkbox"
+                checked={reportAlsoBlock}
+                onChange={(e) => setReportAlsoBlock(e.target.checked)}
+                className="mt-0.5 rounded text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
+              />
+              <div className="text-xs">
+                <span className="font-semibold text-rose-900">Also block this contact immediately</span>
+                <p className="text-[11px] text-rose-700">Prevents future inbound messages and silences automated bot replies.</p>
+              </div>
+            </label>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowReportModal(false)}
+                className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingReport}
+                onClick={handleSubmitReport}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                {isSubmittingReport ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Submitting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Flag className="w-3.5 h-3.5" />
+                    <span>{reportAlsoBlock ? "Report & Block" : "Submit Report"}</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

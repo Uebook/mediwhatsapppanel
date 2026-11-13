@@ -24,6 +24,10 @@ if (!globalThis.__wa_blocked_contacts) {
   globalThis.__wa_blocked_contacts = new Set();
 }
 
+if (!globalThis.__wa_reported_contacts) {
+  globalThis.__wa_reported_contacts = new Map();
+}
+
 export function normalizeTimestampMs(ts) {
   if (!ts) return Date.now();
   const num = Number(ts);
@@ -339,5 +343,42 @@ export const messageStore = {
 
   async getBlockedContacts() {
     return Array.from(globalThis.__wa_blocked_contacts);
+  },
+
+  async recordReport({ phoneNumber, reason, details, reportedBy, alsoBlock }) {
+    const cleanNumber = String(phoneNumber).replace(/\D/g, "").slice(-10);
+    if (!cleanNumber) return false;
+    const reportEntry = {
+      id: "rep-" + Date.now(),
+      phoneNumber: cleanNumber,
+      reason: reason || "Spam / Inappropriate behavior",
+      details: details || "",
+      reportedBy: reportedBy || "Admin Support",
+      timestamp: Date.now(),
+      alsoBlock: Boolean(alsoBlock),
+    };
+    const list = globalThis.__wa_reported_contacts.get(cleanNumber) || [];
+    list.push(reportEntry);
+    globalThis.__wa_reported_contacts.set(cleanNumber, list);
+
+    if (alsoBlock) {
+      globalThis.__wa_blocked_contacts.add(cleanNumber);
+    }
+    return reportEntry;
+  },
+
+  async getReportedContacts() {
+    const reports = {};
+    for (const [key, value] of globalThis.__wa_reported_contacts.entries()) {
+      reports[key] = value;
+    }
+    return reports;
+  },
+
+  async isContactReported(phoneNumber) {
+    const cleanNumber = String(phoneNumber).replace(/\D/g, "").slice(-10);
+    if (!cleanNumber) return false;
+    const list = globalThis.__wa_reported_contacts.get(cleanNumber);
+    return Array.isArray(list) && list.length > 0;
   },
 };
