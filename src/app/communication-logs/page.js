@@ -247,7 +247,7 @@ export default function CommunicationLogsPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs min-w-[700px]">
               <thead className="text-[11px] uppercase tracking-wider text-slate-500 bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="py-3 px-4">Recipient Phone</th>

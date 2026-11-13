@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   LogOut,
   Sparkles,
+  X,
 } from "lucide-react";
 
 export default function Sidebar({ open, onToggle, mobileOpen, onCloseMobile }) {
@@ -253,8 +254,8 @@ export default function Sidebar({ open, onToggle, mobileOpen, onCloseMobile }) {
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 bg-white border-r border-slate-200/90 text-slate-700 transition-all duration-300 flex flex-col ${
-          open ? "w-64" : "w-20"
+        className={`fixed top-0 bottom-0 left-0 z-50 bg-white border-r border-slate-200/90 text-slate-700 transition-all duration-300 flex flex-col w-72 max-w-[85vw] ${
+          open ? "lg:w-64" : "lg:w-20"
         } ${mobileOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full lg:translate-x-0"}`}
       >
         {/* Brand Header */}
@@ -263,7 +264,7 @@ export default function Sidebar({ open, onToggle, mobileOpen, onCloseMobile }) {
             <div className="w-8 h-8 rounded-lg bg-[#00629b] flex items-center justify-center flex-shrink-0 shadow-xs">
               <span className="text-white font-bold text-sm tracking-tight">M</span>
             </div>
-            {open && (
+            {(open || mobileOpen) && (
               <div className="flex flex-col min-w-0">
                 <div className="flex items-center gap-1.5">
                   <span className="font-bold text-sm text-slate-900 tracking-tight">MediConnect</span>
@@ -275,19 +276,28 @@ export default function Sidebar({ open, onToggle, mobileOpen, onCloseMobile }) {
               </div>
             )}
           </div>
-          <button
-            onClick={onToggle}
-            className="hidden lg:flex w-7 h-7 rounded-md bg-slate-50 hover:bg-slate-100 border border-slate-200/80 items-center justify-center text-slate-400 hover:text-slate-700 transition cursor-pointer"
-          >
-            {open ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onToggle}
+              className="hidden lg:flex w-7 h-7 rounded-md bg-slate-50 hover:bg-slate-100 border border-slate-200/80 items-center justify-center text-slate-400 hover:text-slate-700 transition cursor-pointer"
+            >
+              {open ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={onCloseMobile}
+              className="lg:hidden p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition cursor-pointer"
+              title="Close menu"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Navigation Links */}
         <div className="flex-1 overflow-y-auto py-3 px-3 space-y-5 scrollbar-thin">
           {navSections.map((sec) => (
             <div key={sec.label} className="space-y-1">
-              {open && (
+              {(open || mobileOpen) && (
                 <div className="px-3 text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">
                   {sec.label}
                 </div>
@@ -308,9 +318,9 @@ export default function Sidebar({ open, onToggle, mobileOpen, onCloseMobile }) {
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-[#00629b]" : "text-slate-400"}`} />
-                      {open && <span className="truncate">{item.name}</span>}
+                      {(open || mobileOpen) && <span className="truncate">{item.name}</span>}
                     </div>
-                    {open && item.badge && (
+                    {(open || mobileOpen) && item.badge && (
                       <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${item.badgeColor}`}>
                         {item.badge}
                       </span>
@@ -323,7 +333,7 @@ export default function Sidebar({ open, onToggle, mobileOpen, onCloseMobile }) {
         </div>
 
         {/* Footer info */}
-        {open && (
+        {(open || mobileOpen) && (
           <div className="p-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center justify-between">
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>

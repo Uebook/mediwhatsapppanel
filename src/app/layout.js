@@ -36,6 +36,7 @@ export default function RootLayout({ children }) {
       <html lang="en">
         <head>
           <title>Sign In — MediConnect WhatsApp Ops Panel</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
           <link rel="preconnect" href="https://fonts.googleapis.com" />
           <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
           <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
@@ -52,6 +53,9 @@ export default function RootLayout({ children }) {
   if (checkingAuth && !user) {
     return (
       <html lang="en">
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+        </head>
         <body className="bg-slate-50 min-h-screen flex items-center justify-center">
           <div className="flex flex-col items-center gap-3">
             <div className="w-7 h-7 border-2 border-[#00629b] border-t-transparent rounded-full animate-spin" />
@@ -67,6 +71,7 @@ export default function RootLayout({ children }) {
       <head>
         <title>MediConnect.fit — WhatsApp Operations Desk</title>
         <meta name="description" content="Enterprise WhatsApp Support & Operations Panel for MediConnect.fit" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />

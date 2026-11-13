@@ -360,7 +360,7 @@ export default function UsersRolesPage() {
       {/* Users Table */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full text-left text-xs min-w-[720px]">
             <thead className="text-[11px] uppercase tracking-wider text-slate-500 bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="py-3 px-4 font-semibold">User Name</th>
@@ -502,8 +502,13 @@ export default function UsersRolesPage() {
 
       {/* Add User Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 max-w-md w-full space-y-4 shadow-xl">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isSaving) setShowModal(false);
+          }}
+          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in"
+        >
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 max-w-md w-full space-y-4 shadow-xl max-h-[92vh] overflow-y-auto my-auto animate-in zoom-in-95">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#00629b] flex items-center justify-center">

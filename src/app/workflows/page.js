@@ -204,11 +204,11 @@ export default function WorkflowsPage() {
           />
         </div>
 
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
           <select
             value={serviceFilter}
             onChange={(e) => setServiceFilter(e.target.value)}
-            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-[#00629b] font-medium cursor-pointer"
+            className="w-full sm:w-auto px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-[#00629b] font-medium cursor-pointer"
           >
             <option value="ALL">All Services</option>
             <option value="Doctor Consultation">Doctor Consultation</option>
@@ -221,7 +221,7 @@ export default function WorkflowsPage() {
           <select
             value={stateFilter}
             onChange={(e) => setStateFilter(e.target.value)}
-            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-[#00629b] font-medium cursor-pointer"
+            className="w-full sm:w-auto px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-[#00629b] font-medium cursor-pointer"
           >
             <option value="ALL">All States</option>
             <option value="ACTIVE">ACTIVE</option>
@@ -247,7 +247,7 @@ export default function WorkflowsPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs min-w-[750px]">
               <thead className="text-[11px] uppercase tracking-wider text-slate-500 bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="py-3 px-4">Patient / Mobile</th>

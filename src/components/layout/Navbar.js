@@ -248,7 +248,7 @@ export default function Navbar({ onMenuClick, sidebarOpen }) {
         </button>
 
         <div>
-          <h2 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
+          <h2 className="text-xs sm:text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2 truncate max-w-[140px] sm:max-w-none">
             {getPageTitle()}
           </h2>
         </div>
@@ -357,7 +357,7 @@ export default function Navbar({ onMenuClick, sidebarOpen }) {
           </button>
 
           {notifOpen && (
-            <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 text-xs">
+            <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] max-w-xs sm:w-80 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 text-xs">
               <div className="px-2 py-1.5 border-b border-slate-100 flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-800">
                   Notifications {unreadCount > 0 && `(${unreadCount})`}

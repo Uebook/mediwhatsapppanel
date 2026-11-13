@@ -615,8 +615,13 @@ export default function TemplatesPage() {
       {/* EDIT TEMPLATE MODAL */}
       {/* ───────────────────────────────────────────────────────────── */}
       {showEditModal && selectedTemplate && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 max-w-md w-full space-y-4 shadow-xl">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isSubmitting) setShowEditModal(false);
+          }}
+          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in"
+        >
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 max-w-md w-full space-y-4 shadow-xl max-h-[92vh] overflow-y-auto my-auto animate-in zoom-in-95">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <Edit3 className="w-4 h-4 text-[#00629b]" />
