@@ -22,29 +22,9 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 
-// Fallback templates in case Meta rate limiting is active
-const FALLBACK_TEMPLATES = [
-  {
-    id: "tmpl_mediconnect_test",
-    name: "mediconnect_test_message",
-    category: "UTILITY",
-    language: "en_US",
-    status: "APPROVED",
-    content: "Hello {{1}}, this is a test message from MediConnect. Your reference number is {{2}}. Thank you for choosing MediConnect.fit.",
-  },
-  {
-    id: "tmpl_navratri_post",
-    name: "navratri_post",
-    category: "MARKETING",
-    language: "en_US",
-    status: "APPROVED",
-    content: "Wishing everyone a very Happy Navratri! May Maa Durga bless you with happiness, good health, success and prosperity.",
-  },
-];
-
 export default function BroadcastsPage() {
   const [broadcasts, setBroadcasts] = useState([]);
-  const [templates, setTemplates] = useState(FALLBACK_TEMPLATES);
+  const [templates, setTemplates] = useState([]);
   const [loadingBroadcasts, setLoadingBroadcasts] = useState(true);
   const [loadingTemplates, setLoadingTemplates] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -94,10 +74,10 @@ export default function BroadcastsPage() {
           setForm((prev) => ({ ...prev, template: data.templates[0].name }));
         }
       } else {
-        setTemplates(FALLBACK_TEMPLATES);
+        setTemplates([]);
       }
     } catch (err) {
-      setTemplates(FALLBACK_TEMPLATES);
+      setTemplates([]);
     } finally {
       setLoadingTemplates(false);
     }

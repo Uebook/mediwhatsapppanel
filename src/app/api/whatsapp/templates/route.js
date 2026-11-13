@@ -86,36 +86,10 @@ export async function GET() {
       globalThis.__wa_templates_cache = templates;
     } else if (Array.isArray(globalThis.__wa_templates_cache) && globalThis.__wa_templates_cache.length > 0) {
       templates = globalThis.__wa_templates_cache;
-      sourceUsed = "Live Cached (Meta Rate Limiting Active)";
+      sourceUsed = "Live Cached (Meta API)";
     } else {
-      templates = [
-        {
-          id: "tmpl_mediconnect_test",
-          name: "mediconnect_test_message",
-          category: "UTILITY",
-          language: "en_US",
-          status: "APPROVED",
-          metaStatus: "APPROVED",
-          content: "Hello {{1}}, this is a test message from MediConnect. Your reference number is {{2}}. Thank you for choosing MediConnect.fit.",
-          header: null,
-          buttons: [],
-          lastUpdated: "multichannel.insignsms.com (Live Approved)",
-        },
-        {
-          id: "tmpl_navratri_post",
-          name: "navratri_post",
-          category: "MARKETING",
-          language: "en_US",
-          status: "APPROVED",
-          metaStatus: "APPROVED",
-          content: "Wishing everyone a very Happy Navratri! May Maa Durga bless you with happiness, good health, success and prosperity.",
-          header: "IMAGE",
-          buttons: [],
-          lastUpdated: "multichannel.insignsms.com (Live Approved)",
-        },
-      ];
-      globalThis.__wa_templates_cache = templates;
-      sourceUsed = "Live Approved Templates";
+      templates = [];
+      sourceUsed = "Live Meta / Insign API (0 Live Templates)";
     }
 
     return NextResponse.json({

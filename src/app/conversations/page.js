@@ -2327,7 +2327,9 @@ export default function ConversationsPage() {
                   onChange={(e) => setSelectedTemplate(e.target.value)}
                   className="flex-1 px-2.5 py-1 bg-white border border-emerald-300 rounded-md text-xs text-slate-800 focus:outline-none focus:border-emerald-600 cursor-pointer"
                 >
-                  <option value="">-- Choose Approved Template --</option>
+                  <option value="">
+                    {templates.length === 0 ? "-- No Live Approved Templates Available --" : "-- Choose Approved Template --"}
+                  </option>
                   {templates.map((t) => (
                     <option key={t.id} value={t.name}>
                       {t.name} ({t.category} - {t.status})
