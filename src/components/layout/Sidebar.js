@@ -40,16 +40,83 @@ export default function Sidebar({ open, onToggle, mobileOpen, onCloseMobile }) {
       const msgRes = await fetch("/api/whatsapp/messages");
       const msgData = await msgRes.json();
       if (msgData.success && msgData.allMessages) {
-        const activePhones = Object.keys(msgData.allMessages);
+        // Read saved local conversations map to mirror takeovers and escalations screens
+        const savedMap = {};
+        try {
+          const saved = localStorage.getItem("mediconnect_wa_live_conversations");
+          if (saved) {
+            const parsed = JSON.parse(saved) || [];
+            parsed.forEach((c) => {
+              const digits = (c.mobile || "").replace(/\D/g, "").slice(-10);
+              if (digits) savedMap[digits] = c;
+            });
+          }
+        } catch (e) {}
+
+        const cleanPhonesSet = new Set();
         let takeoversCount = 0;
         let escalationsCount = 0;
         let recoveryCount = 0;
 
         for (const [phone, msgs] of Object.entries(msgData.allMessages)) {
-          if (msgs.some((m) => m.sender === "agent")) takeoversCount++;
-          if (msgs.some((m) => m.sender === "patient" && /(urgent|emergency|doctor|pain|help|delay|not working|panic|hospital|fever|serious)/i.test(m.text || ""))) {
+          const cleanDigits = phone.replace(/\D/g, "").slice(-10);
+          if (!cleanDigits) continue;
+          cleanPhonesSet.add(cleanDigits);
+
+          const existing = savedMap[cleanDigits] || {};
+          const hasAgentMsg = msgs.some((m) => m.sender === "agent");
+          const patientWantsHuman = msgs.some(
+            (m) =>
+              m.sender === "patient" &&
+              /(human|agent|support|doctor|help|talk|person)/i.test(m.text || "")
+          );
+
+          // 1. Takeover Status calculation strictly matching takeovers/page.js
+          const serverTakeover = msgData.takeoverContacts
+            ? msgData.takeoverContacts[cleanDigits]
+            : null;
+          let takeoverStatus = existing.takeoverStatus;
+          if (serverTakeover !== undefined && serverTakeover !== null) {
+            takeoverStatus = serverTakeover.active
+              ? "HUMAN_OWNERSHIP_ACTIVE"
+              : "ACTIVE_AUTOMATION";
+          } else if (!takeoverStatus) {
+            if (hasAgentMsg) takeoverStatus = "HUMAN_OWNERSHIP_ACTIVE";
+            else if (patientWantsHuman) takeoverStatus = "HUMAN_TAKEOVER_REQUESTED";
+            else takeoverStatus = "ACTIVE_AUTOMATION";
+          }
+
+          if (
+            takeoverStatus === "HUMAN_OWNERSHIP_ACTIVE" ||
+            takeoverStatus === "HUMAN_TAKEOVER_REQUESTED"
+          ) {
+            takeoversCount++;
+          }
+
+          // 2. Escalations count strictly matching escalations/page.js
+          const urgentMsg = msgs
+            .slice(-5)
+            .find(
+              (m) =>
+                m.sender === "patient" &&
+                /(urgent|emergency|doctor|pain|help|delay|not working|panic|hospital|fever|serious)/i.test(
+                  m.text || ""
+                )
+            );
+          let priority = existing.escalationTag;
+          if (!priority || priority === "NORMAL") {
+            if (urgentMsg) priority = "HIGH";
+          }
+          if (
+            priority === "HIGH" ||
+            priority === "MEDIUM" ||
+            priority === "P1 Critical" ||
+            priority === "Follow-up Required"
+          ) {
             escalationsCount++;
           }
+
+          // 3. Workflow Recovery count strictly matching recovery/page.js
           if (msgs.some((m) => m.status === "failed")) {
             recoveryCount++;
           }
@@ -57,7 +124,7 @@ export default function Sidebar({ open, onToggle, mobileOpen, onCloseMobile }) {
 
         setCounts((prev) => ({
           ...prev,
-          conversations: activePhones.length,
+          conversations: cleanPhonesSet.size,
           takeovers: takeoversCount,
           escalations: escalationsCount,
           recovery: recoveryCount,
