@@ -18,19 +18,37 @@ export default function CommunicationLogsPage() {
   const [filter, setFilter] = useState("ALL");
   const [search, setSearch] = useState("");
 
+  const getNormalizedTime = (item) => {
+    if (item.rawTimestamp) {
+      const num = Number(item.rawTimestamp);
+      if (!isNaN(num) && num > 0) return num < 10000000000 ? num * 1000 : num;
+    }
+    if (item.created_at) {
+      const d = new Date(item.created_at).getTime();
+      if (!isNaN(d) && d > 0) return d;
+    }
+    if (item.timestamp) {
+      const num = Number(item.timestamp);
+      if (!isNaN(num) && num > 0) return num < 10000000000 ? num * 1000 : num;
+      const d = new Date(item.timestamp).getTime();
+      if (!isNaN(d) && d > 0) return d;
+    }
+    return 0;
+  };
+
   const fetchLogs = async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/whatsapp/reports");
       const data = await res.json();
 
+      let records = [];
       if (data.data && Array.isArray(data.data)) {
-        setLogs(data.data);
+        records = data.data;
       } else {
         // Fallback to recorded messages
         const msgRes = await fetch("/api/whatsapp/messages");
         const msgData = await msgRes.json();
-        const records = [];
         if (msgData.success && msgData.allMessages) {
           for (const [phone, msgs] of Object.entries(msgData.allMessages)) {
             msgs.forEach((m) => {
@@ -41,14 +59,18 @@ export default function CommunicationLogsPage() {
                 patientName: "User (" + phone.slice(-4) + ")",
                 template: m.text?.slice(0, 40) || "Text Message",
                 channel: "InsignSMS MultiChannel",
+                rawTimestamp: m.rawTimestamp,
                 timestamp: m.time || "Recently",
                 status: m.status === "failed" ? "FAILED" : "DELIVERED",
               });
             });
           }
         }
-        setLogs(records);
       }
+
+      // Chronological descending sort (newest first - Issue 20)
+      records.sort((a, b) => getNormalizedTime(b) - getNormalizedTime(a));
+      setLogs(records);
     } catch (err) {
       console.error("Failed to load logs:", err);
     } finally {

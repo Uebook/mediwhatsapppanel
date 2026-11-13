@@ -24,6 +24,7 @@ export default function UsersRolesPage() {
   const [showModal, setShowModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeAgentEmail, setActiveAgentEmail] = useState("");
+  const [statsFilter, setStatsFilter] = useState("ALL");
   const [dbSource, setDbSource] = useState("supabase_db");
   const [form, setForm] = useState({
     name: "",
@@ -58,7 +59,7 @@ export default function UsersRolesPage() {
         setUsers(data.users);
         setDbSource(data.source || "supabase_db");
         if (forceSync) {
-          toast.success("Synchronized users with MediConnect & Supabase DB!");
+          toast.success("Synchronized users with MediConnect Database!");
         }
         try {
           localStorage.setItem("mediconnect_team_users", JSON.stringify(data.users));
@@ -132,7 +133,7 @@ export default function UsersRolesPage() {
           password: "admin123",
           role: "Support Agent",
         });
-        toast.success(`Agent ${data.user.name} added to Supabase DB!`);
+        toast.success(`Agent ${data.user.name} added to Database!`);
       } else {
         toast.error(data.error || "Failed to add agent");
       }
@@ -192,7 +193,7 @@ export default function UsersRolesPage() {
       });
       const data = await res.json();
       if (data.success) {
-        toast.success(`Removed ${user.name} from Supabase DB`);
+        toast.success(`Removed ${user.name} from Database`);
       } else {
         throw new Error(data.error);
       }
@@ -203,31 +204,41 @@ export default function UsersRolesPage() {
   };
 
   const filteredUsers = users.filter((u) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
+    const q = searchQuery.trim().toLowerCase();
+    const matchSearch =
+      !q ||
       (u.name || "").toLowerCase().includes(q) ||
       (u.email || "").toLowerCase().includes(q) ||
-      (u.role || "").toLowerCase().includes(q)
-    );
+      (u.role || "").toLowerCase().includes(q);
+
+    let matchStats = true;
+    if (statsFilter === "ACTIVE") {
+      matchStats = u.status === "Active";
+    } else if (statsFilter === "ADMINS") {
+      matchStats = (u.role || "").toLowerCase().includes("admin");
+    } else if (statsFilter === "SUPPORT") {
+      matchStats = (u.role || "").toLowerCase().includes("support");
+    }
+
+    return matchSearch && matchStats;
   });
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header (Issue 23: Responsive Alignment on Mobile) */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2.5">
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
               <Users className="w-6 h-6 text-[#00629b]" />
               Support Users & Role-Based Access Control (RBAC)
             </h1>
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 flex-shrink-0">
               <Database className="w-3 h-3 text-emerald-600" />
-              Supabase DB Connected
+              Database Connected
             </span>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-slate-500">
             Manage permissions for Live Takeovers, Patient Medical Record Access, Broadcasts, and Audit Logs directly from database.
           </p>
         </div>
@@ -260,9 +271,20 @@ export default function UsersRolesPage() {
         </div>
       </div>
 
-      {/* Quick Stats & Search Filter */}
+      {/* Quick Stats & Search Filter (Issue 23: Made All 4 Clickable Filters) */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-        <div className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between shadow-2xs">
+        <button
+          type="button"
+          onClick={() => {
+            setStatsFilter("ALL");
+            toast.success("Showing all support agents");
+          }}
+          className={`p-3.5 bg-white border rounded-xl flex items-center justify-between text-left transition cursor-pointer shadow-2xs ${
+            statsFilter === "ALL"
+              ? "border-[#00629b] ring-2 ring-[#00629b]/20"
+              : "border-slate-200 hover:border-slate-300"
+          }`}
+        >
           <div>
             <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Agents</div>
             <div className="text-lg font-bold text-slate-900 mt-0.5">{users.length}</div>
@@ -270,9 +292,20 @@ export default function UsersRolesPage() {
           <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#00629b] flex items-center justify-center font-bold">
             <Users className="w-4 h-4" />
           </div>
-        </div>
+        </button>
 
-        <div className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between shadow-2xs">
+        <button
+          type="button"
+          onClick={() => {
+            setStatsFilter("ACTIVE");
+            toast.success("Filtered to active agents");
+          }}
+          className={`p-3.5 bg-white border rounded-xl flex items-center justify-between text-left transition cursor-pointer shadow-2xs ${
+            statsFilter === "ACTIVE"
+              ? "border-emerald-600 ring-2 ring-emerald-600/20"
+              : "border-slate-200 hover:border-slate-300"
+          }`}
+        >
           <div>
             <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Active Staff</div>
             <div className="text-lg font-bold text-emerald-600 mt-0.5">
@@ -282,19 +315,30 @@ export default function UsersRolesPage() {
           <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
             <CheckCircle2 className="w-4 h-4" />
           </div>
-        </div>
+        </button>
 
-        <div className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between shadow-2xs">
+        <button
+          type="button"
+          onClick={() => {
+            setStatsFilter("ADMINS");
+            toast.success("Filtered to Super Admins & Admins");
+          }}
+          className={`p-3.5 bg-white border rounded-xl flex items-center justify-between text-left transition cursor-pointer shadow-2xs ${
+            statsFilter === "ADMINS"
+              ? "border-purple-600 ring-2 ring-purple-600/20"
+              : "border-slate-200 hover:border-slate-300"
+          }`}
+        >
           <div>
             <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Super Admins</div>
             <div className="text-lg font-bold text-slate-900 mt-0.5">
-              {users.filter((u) => u.role === "Super Admin").length}
+              {users.filter((u) => (u.role || "").toLowerCase().includes("admin")).length}
             </div>
           </div>
           <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
             <ShieldCheck className="w-4 h-4" />
           </div>
-        </div>
+        </button>
 
         <div className="p-2.5 bg-white border border-slate-200 rounded-xl flex items-center gap-2 shadow-2xs">
           <Search className="w-4 h-4 text-slate-400 ml-1 flex-shrink-0" />
@@ -332,7 +376,7 @@ export default function UsersRolesPage() {
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-slate-400">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto text-[#00629b] mb-2" />
-                    <span>Loading agents from Supabase database...</span>
+                    <span>Loading agents from database...</span>
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
@@ -364,7 +408,7 @@ export default function UsersRolesPage() {
                                   : "bg-purple-50 text-purple-700 border-purple-200"
                               }`}
                             >
-                              {u.source || "Supabase DB"}
+                              {u.source || "Database"}
                             </span>
                           </div>
                           <div className="text-[10px] text-slate-500 font-mono mt-0.5">
@@ -467,7 +511,7 @@ export default function UsersRolesPage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">Add Support Agent / Admin</h3>
-                  <p className="text-[10px] text-slate-500">Saves directly to Supabase Cloud Database</p>
+                  <p className="text-[10px] text-slate-500">Saves directly to Cloud Database</p>
                 </div>
               </div>
               <button
@@ -553,8 +597,8 @@ export default function UsersRolesPage() {
               </div>
 
               <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-[11px] text-slate-600 space-y-1">
-                <span className="font-semibold text-slate-700 block">Supabase Synchronization:</span>
-                <p>User will be provisioned with full metadata in Supabase Cloud Storage and given active sign-in credentials in Supabase Auth.</p>
+                <span className="font-semibold text-slate-700 block">Database Synchronization:</span>
+                <p>User will be provisioned with full metadata in Cloud Database and given active sign-in credentials.</p>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">

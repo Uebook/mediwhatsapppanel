@@ -215,16 +215,35 @@ export default function EscalationsPage() {
                 </p>
               </div>
 
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-[10px] text-slate-400">Agent: {esc.assignedAgent || "Unassigned"}</span>
-                <Link
-                  href="/conversations"
-                  onClick={() => handleClaim(esc.mobile)}
-                  className="px-3 py-1.5 bg-[#00629b] hover:bg-[#004f7c] text-white text-xs font-semibold rounded-lg shadow-xs transition flex items-center gap-1 cursor-pointer"
-                >
-                  <span>Claim & Reply</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                <span className="text-[10px] text-slate-500 font-medium truncate max-w-[120px]">
+                  {esc.assignedAgent ? `Agent: ${esc.assignedAgent}` : "Unassigned"}
+                </span>
+                <div className="flex items-center gap-2">
+                  {!esc.assignedAgent ? (
+                    <button
+                      type="button"
+                      onClick={() => handleClaim(esc.mobile)}
+                      className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition cursor-pointer"
+                    >
+                      Claim
+                    </button>
+                  ) : (
+                    <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-200">
+                      ✓ Claimed
+                    </span>
+                  )}
+                  <Link
+                    href={`/conversations?phone=${(esc.mobile || "").replace(/\D/g, "").slice(-10)}`}
+                    onClick={() => {
+                      if (!esc.assignedAgent) handleClaim(esc.mobile);
+                    }}
+                    className="px-3 py-1.5 bg-[#00629b] hover:bg-[#004f7c] text-white text-xs font-semibold rounded-lg shadow-xs transition flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Reply</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
               </div>
             </div>
           ))}

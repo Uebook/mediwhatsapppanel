@@ -211,6 +211,67 @@ export const messageStore = {
     return message;
   },
 
+  async markAsRead(phoneNumber) {
+    const cleanNumber = String(phoneNumber).replace(/\D/g, "").slice(-10);
+    if (!cleanNumber) return 0;
+
+    let updatedCount = 0;
+    const list = globalThis.__wa_messages_store.get(cleanNumber);
+    if (Array.isArray(list)) {
+      list.forEach((m) => {
+        if (m.sender === "patient" && m.status !== "read") {
+          m.status = "read";
+          updatedCount++;
+        }
+      });
+    }
+
+    try {
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/whatsapp_messages?phone_number=eq.${cleanNumber}&sender=eq.patient`,
+        {
+          method: "PATCH",
+          headers: {
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ status: "read" }),
+        }
+      );
+    } catch (e) {}
+
+    return updatedCount;
+  },
+
+  async markAsRecovered(messageId) {
+    if (!messageId) return false;
+    for (const [phone, list] of globalThis.__wa_messages_store.entries()) {
+      const msg = (list || []).find((m) => m.id === messageId || m.wamid === messageId);
+      if (msg) {
+        msg.status = "delivered";
+        msg.recovered = true;
+      }
+    }
+
+    try {
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/whatsapp_messages?id=eq.${encodeURIComponent(messageId)}`,
+        {
+          method: "PATCH",
+          headers: {
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ status: "delivered" }),
+        }
+      );
+    } catch (e) {}
+
+    return true;
+  },
+
   async getMessages(phoneNumber) {
     const cleanNumber = String(phoneNumber).replace(/\D/g, "").slice(-10);
     if (!cleanNumber) return [];

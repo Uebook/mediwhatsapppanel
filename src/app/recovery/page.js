@@ -55,7 +55,16 @@ export default function RecoveryPage() {
             });
           }
         }
-        setRecoveries(recList);
+
+        // Filter out permanently recovered workflows
+        let recoveredIds = new Set();
+        try {
+          const storedRec = JSON.parse(localStorage.getItem("mediconnect_recovered_workflows") || "[]");
+          storedRec.forEach((id) => recoveredIds.add(id));
+        } catch (e) {}
+
+        const activeList = recList.filter((r) => !recoveredIds.has(r.id));
+        setRecoveries(activeList);
       }
     } catch (e) {
       setRecoveries([]);
@@ -68,9 +77,29 @@ export default function RecoveryPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleResumeRecovery = (id) => {
+  const handleResumeRecovery = async (id) => {
+    // 1. Optimistic UI update
     setRecoveries((prev) => prev.filter((r) => r.id !== id));
-    toast.success("Recovery sequence dispatched to WhatsApp Multichannel Gateway.");
+
+    // 2. Persist to localStorage so it never reappears on interval or page refresh
+    try {
+      const storedRec = JSON.parse(localStorage.getItem("mediconnect_recovered_workflows") || "[]");
+      if (!storedRec.includes(id)) {
+        storedRec.push(id);
+        localStorage.setItem("mediconnect_recovered_workflows", JSON.stringify(storedRec));
+      }
+    } catch (e) {}
+
+    // 3. Call backend API to record recovery
+    try {
+      await fetch("/api/whatsapp/messages", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "recover_workflow", id }),
+      });
+    } catch (e) {}
+
+    toast.success("Recovery sequence dispatched to WhatsApp Multichannel Gateway and marked resolved.");
   };
 
   return (

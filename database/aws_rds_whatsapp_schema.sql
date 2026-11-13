@@ -358,3 +358,4 @@ ON CONFLICT (email) DO UPDATE SET
     status = EXCLUDED.status;
 
 COMMIT;
+

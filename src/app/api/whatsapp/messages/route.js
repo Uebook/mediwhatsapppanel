@@ -21,6 +21,34 @@ export async function GET(req) {
   });
 }
 
+export async function PATCH(req) {
+  try {
+    const body = await req.json();
+    const { mobile } = body;
+
+    if (!mobile) {
+      return NextResponse.json(
+        { success: false, error: "mobile is required" },
+        { status: 400 }
+      );
+    }
+
+    const cleanNumber = String(mobile).replace(/\D/g, "").slice(-10);
+    const updatedCount = await messageStore.markAsRead(cleanNumber);
+
+    return NextResponse.json({
+      success: true,
+      mobile: cleanNumber,
+      markedRead: updatedCount,
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { success: false, error: err.message },
+      { status: 500 }
+    );
+  }
+}
+
 // POST endpoint to allow simulating or injecting incoming patient replies directly
 export async function POST(req) {
   try {

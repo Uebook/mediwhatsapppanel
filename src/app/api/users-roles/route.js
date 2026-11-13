@@ -21,7 +21,7 @@ const DEFAULT_USERS = [
     permissions: ["ALL_ACCESS", "BROADCASTS", "TEMPLATES_CRUD", "TAKEOVERS", "AUDIT_EXPORT"],
     status: "Active",
     lastLogin: "Just now",
-    source: "Supabase DB",
+    source: "Database",
     createdAt: new Date().toISOString(),
   },
   {
@@ -32,7 +32,7 @@ const DEFAULT_USERS = [
     permissions: ["LIVE_TAKEOVER", "REPLY_WHATSAPP", "SEND_TEMPLATES"],
     status: "Active",
     lastLogin: "Active Today",
-    source: "Supabase DB",
+    source: "Database",
     createdAt: new Date().toISOString(),
   },
   {
@@ -43,7 +43,7 @@ const DEFAULT_USERS = [
     permissions: ["LIVE_TAKEOVER", "REPLY_WHATSAPP"],
     status: "Active",
     lastLogin: "Active Now",
-    source: "Supabase DB",
+    source: "Database",
     createdAt: new Date().toISOString(),
   },
 ];
@@ -256,7 +256,7 @@ export async function POST(req) {
       permissions: finalPermissions,
       status: "Active",
       lastLogin: "Invited",
-      source: "Supabase DB",
+      source: "Database",
       createdAt: new Date().toISOString(),
     };
 

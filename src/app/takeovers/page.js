@@ -216,7 +216,7 @@ export default function TakeoversPage() {
                         Return to Bot
                       </button>
                       <Link
-                        href="/conversations"
+                        href={`/conversations?phone=${(t.mobile || "").replace(/\D/g, "").slice(-10)}`}
                         className="px-3 py-1 bg-[#00629b] hover:bg-[#004f7c] text-white rounded-lg text-xs font-semibold cursor-pointer transition inline-flex items-center gap-1"
                       >
                         <span>Reply</span>

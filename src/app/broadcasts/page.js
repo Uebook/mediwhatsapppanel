@@ -51,6 +51,7 @@ export default function BroadcastsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [kpiFilter, setKpiFilter] = useState("ALL");
   const [selectedCampaign, setSelectedCampaign] = useState(null);
   const [totalActiveAudience, setTotalActiveAudience] = useState(5);
 
@@ -166,7 +167,7 @@ export default function BroadcastsPage() {
             { id: toastId }
           );
         } else {
-          toast.success("Broadcast scheduled and synced with Supabase DB.", {
+          toast.success("Broadcast scheduled and synced with Database.", {
             id: toastId,
           });
         }
@@ -214,7 +215,17 @@ export default function BroadcastsPage() {
     const matchesStatus =
       statusFilter === "ALL" || b.status?.toUpperCase() === statusFilter;
 
-    return matchesSearch && matchesStatus;
+    let matchesKpi = true;
+    if (kpiFilter === "DISPATCHED") {
+      matchesKpi = (b.sent || 0) > 0 || b.status?.toUpperCase() === "COMPLETED";
+    } else if (kpiFilter === "HIGH_DELIVERY") {
+      const rate = b.sent > 0 ? (b.delivered / b.sent) * 100 : 100;
+      matchesKpi = rate >= 80;
+    } else if (kpiFilter === "TARGET_AUDIENCE") {
+      matchesKpi = (b.targetAudienceCount || b.target_count || 0) > 0 || b.status?.toUpperCase() === "QUEUED" || b.status?.toUpperCase() === "COMPLETED";
+    }
+
+    return matchesSearch && matchesStatus && matchesKpi;
   });
 
   // Calculate live KPI metrics
@@ -236,7 +247,7 @@ export default function BroadcastsPage() {
             WhatsApp Broadcasts & Patient Engagement
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Meta Business outbound healthcare announcements, health camp alerts, and preventive reminders synced with Supabase Cloud DB.
+            Meta Business outbound healthcare announcements, health camp alerts, and preventive reminders synced with Cloud DB.
           </p>
         </div>
 
@@ -245,7 +256,7 @@ export default function BroadcastsPage() {
             onClick={() => {
               loadBroadcastsFromDb();
               loadLiveTemplates();
-              toast.success("Refreshed live data from Supabase Cloud DB.");
+              toast.success("Refreshed live data from Database.");
             }}
             disabled={loadingBroadcasts}
             className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl shadow-xs transition cursor-pointer"
@@ -265,29 +276,63 @@ export default function BroadcastsPage() {
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards (Issue 21: Made All 4 Clickable with Active Filter State) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs">
+        <button
+          type="button"
+          onClick={() => {
+            setKpiFilter("ALL");
+            setStatusFilter("ALL");
+            toast.success("Showing all broadcast campaigns");
+          }}
+          className={`bg-white p-4 rounded-2xl border text-left transition cursor-pointer shadow-2xs ${
+            kpiFilter === "ALL" && statusFilter === "ALL"
+              ? "border-[#00629b] ring-2 ring-[#00629b]/20"
+              : "border-slate-200/90 hover:border-slate-300"
+          }`}
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider">Total Campaigns</span>
             <Radio className="w-4 h-4 text-[#00629b]" />
           </div>
           <div className="text-2xl font-bold text-slate-900">{broadcasts.length}</div>
           <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Live in Supabase DB
+            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Live in Database
           </p>
-        </div>
+        </button>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs">
+        <button
+          type="button"
+          onClick={() => {
+            setKpiFilter("DISPATCHED");
+            toast.success("Filtered to dispatched campaigns");
+          }}
+          className={`bg-white p-4 rounded-2xl border text-left transition cursor-pointer shadow-2xs ${
+            kpiFilter === "DISPATCHED"
+              ? "border-emerald-600 ring-2 ring-emerald-600/20"
+              : "border-slate-200/90 hover:border-slate-300"
+          }`}
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider">Messages Dispatched</span>
             <Send className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-2xl font-bold text-slate-900">{totalSent.toLocaleString()}</div>
           <p className="text-[11px] text-slate-500 mt-1">Across verified patient base</p>
-        </div>
+        </button>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs">
+        <button
+          type="button"
+          onClick={() => {
+            setKpiFilter("HIGH_DELIVERY");
+            toast.success("Filtered to high delivery rate campaigns (>=80%)");
+          }}
+          className={`bg-white p-4 rounded-2xl border text-left transition cursor-pointer shadow-2xs ${
+            kpiFilter === "HIGH_DELIVERY"
+              ? "border-teal-600 ring-2 ring-teal-600/20"
+              : "border-slate-200/90 hover:border-slate-300"
+          }`}
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider">Delivery Rate</span>
             <CheckCircle2 className="w-4 h-4 text-teal-600" />
@@ -296,16 +341,27 @@ export default function BroadcastsPage() {
           <p className="text-[11px] text-emerald-700 font-medium mt-1">
             {totalDelivered} messages delivered
           </p>
-        </div>
+        </button>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs">
+        <button
+          type="button"
+          onClick={() => {
+            setKpiFilter("TARGET_AUDIENCE");
+            toast.success("Filtered to active audience campaigns");
+          }}
+          className={`bg-white p-4 rounded-2xl border text-left transition cursor-pointer shadow-2xs ${
+            kpiFilter === "TARGET_AUDIENCE"
+              ? "border-purple-600 ring-2 ring-purple-600/20"
+              : "border-slate-200/90 hover:border-slate-300"
+          }`}
+        >
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider">Target Audience</span>
             <Users className="w-4 h-4 text-purple-600" />
           </div>
           <div className="text-2xl font-bold text-slate-900">{totalActiveAudience}</div>
           <p className="text-[11px] text-slate-500 mt-1">Verified patient phones in DB</p>
-        </div>
+        </button>
       </div>
 
       {/* Controls Bar: Search & Filter */}
@@ -343,7 +399,7 @@ export default function BroadcastsPage() {
         {loadingBroadcasts ? (
           <div className="p-12 text-center text-slate-500 text-xs flex flex-col items-center justify-center space-y-2">
             <Loader2 className="w-6 h-6 text-[#00629b] animate-spin" />
-            <span>Loading live broadcast campaigns from Supabase Cloud DB...</span>
+            <span>Loading live broadcast campaigns from database...</span>
           </div>
         ) : filteredBroadcasts.length === 0 ? (
           <div className="p-12 text-center text-slate-400 text-xs space-y-3">
@@ -469,7 +525,7 @@ export default function BroadcastsPage() {
                   Create Live WhatsApp Broadcast
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  Outbound campaign sent via Meta Cloud API and saved to Supabase DB.
+                  Outbound campaign sent via Meta Cloud API and saved to Database.
                 </p>
               </div>
               <button
@@ -591,7 +647,7 @@ export default function BroadcastsPage() {
                 <p className="text-[10px] text-slate-600 pl-6">
                   {form.sendImmediately
                     ? "Messages will be dispatched in real-time through the Insign/Meta WhatsApp gateway and tracked in database."
-                    : "Campaign will be stored in Supabase with QUEUED status to be triggered on demand."}
+                    : "Campaign will be stored in database with QUEUED status to be triggered on demand."}
                 </p>
               </div>
 

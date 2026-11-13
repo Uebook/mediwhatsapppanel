@@ -37,6 +37,8 @@ import {
   Smartphone,
   ZoomIn,
   Maximize2,
+  ArrowLeft,
+  Copy,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -144,6 +146,59 @@ export function formatMessageTime(rawTimestamp, fallbackTime) {
   return fallbackTime || "";
 }
 
+// Date-wise chat list timestamps (Issue 4: Today -> Time, Yesterday -> "Yesterday", Older -> Date)
+export function formatConversationTimestamp(rawTimestamp, fallbackTime) {
+  if (!rawTimestamp && !fallbackTime) return "";
+  let ms = Number(rawTimestamp);
+  if (isNaN(ms) || ms <= 0) {
+    return fallbackTime || "";
+  }
+  if (ms < 10000000000) ms *= 1000;
+
+  const date = new Date(ms);
+  const now = new Date();
+
+  const isToday =
+    date.getDate() === now.getDate() &&
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear();
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday =
+    date.getDate() === yesterday.getDate() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getFullYear() === yesterday.getFullYear();
+
+  if (isToday) {
+    try {
+      return date.toLocaleTimeString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+    } catch (e) {
+      return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
+    }
+  }
+
+  if (isYesterday) {
+    return "Yesterday";
+  }
+
+  try {
+    return date.toLocaleDateString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      day: "numeric",
+      month: "short",
+      year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+    });
+  } catch (e) {
+    return date.toLocaleDateString();
+  }
+}
+
 const EMOJI_CATEGORIES = [
   {
     name: "Smileys & Faces",
@@ -200,6 +255,27 @@ export default function ConversationsPage() {
   const [selectedTemplate, setSelectedTemplate] = useState("");
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [loadingInitial, setLoadingInitial] = useState(true);
+
+  // Mobile view toggle (Issue 16)
+  const [mobileShowChat, setMobileShowChat] = useState(false);
+
+  // Top Action Modals & In-Chat Search (Issue 11)
+  const [showCallModal, setShowCallModal] = useState(false);
+  const [showVideoModal, setShowVideoModal] = useState(false);
+  const [showTagsModal, setShowTagsModal] = useState(false);
+  const [showChatSearch, setShowChatSearch] = useState(false);
+  const [chatSearchQuery, setChatSearchQuery] = useState("");
+
+  // Audio Recording with MediaRecorder API (Issue 15)
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const recordingTimerRef = useRef(null);
+
+  // Message Tracking for Notifications (Issue 3)
+  const knownMsgIdsRef = useRef(new Set());
+  const isFirstLoadRef = useRef(true);
 
   // Attachment & Emoji Picker State
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
@@ -357,7 +433,10 @@ export default function ConversationsPage() {
             return (m.sender === "patient" || m.sender === "inbound") && norm > lastReadTime;
           });
 
-          const unreadCount = isManualUnread ? Math.max(incomingUnread.length, 1) : incomingUnread.length;
+          const rawUnread = isManualUnread ? Math.max(incomingUnread.length, 1) : incomingUnread.length;
+          // Issue 10: Reset unread count if conversation is currently open
+          const isCurrentlyActive = selectedId === "conv-" + cleanDigits;
+          const unreadCount = isCurrentlyActive ? 0 : rawUnread;
 
           loadedConvs.push({
             id: "conv-" + cleanDigits,
@@ -370,12 +449,40 @@ export default function ConversationsPage() {
             takeoverStatus: takeover,
             assignedAgent: existing.assignedAgent || (takeover === "HUMAN_OWNERSHIP_ACTIVE" ? (currentUser?.name || "Support Desk") : null),
             lastMessage: formatLastMessagePreview(lastMsg),
-            lastActivity: lastMsg ? formatMessageTime(lastMsg.rawTimestamp, lastMsg.time) : "Recently",
+            lastActivity: lastMsg ? formatConversationTimestamp(lastMsg.rawTimestamp, lastMsg.time) : "Recently",
             unreadCount: unreadCount,
             isUnread: unreadCount > 0,
             messages: sortedMsgs,
           });
         }
+
+        // Issue 3 & Issue 5: Chronological sort of conversations by most recent message timestamp (descending)
+        loadedConvs.sort((a, b) => {
+          const lastA = a.messages && a.messages.length > 0 ? a.messages[a.messages.length - 1] : null;
+          const lastB = b.messages && b.messages.length > 0 ? b.messages[b.messages.length - 1] : null;
+          const tsA = Number(lastA?.rawTimestamp || 0);
+          const tsB = Number(lastB?.rawTimestamp || 0);
+          const normA = tsA < 10000000000 ? tsA * 1000 : tsA;
+          const normB = tsB < 10000000000 ? tsB * 1000 : tsB;
+          return normB - normA;
+        });
+
+        // Issue 3: In-app popup/toast for incoming messages without manual refresh
+        if (!isFirstLoadRef.current) {
+          for (const conv of loadedConvs) {
+            const lastMsg = conv.messages && conv.messages.length > 0 ? conv.messages[conv.messages.length - 1] : null;
+            if (lastMsg && (lastMsg.sender === "patient" || lastMsg.sender === "inbound")) {
+              if (!knownMsgIdsRef.current.has(lastMsg.id)) {
+                toast(`💬 Incoming message from ${conv.patientName}:\n"${lastMsg.text?.slice(0, 50) || 'Attachment'}"`, {
+                  icon: "🔔",
+                  duration: 4000,
+                });
+              }
+            }
+          }
+        }
+        isFirstLoadRef.current = false;
+        loadedConvs.forEach((c) => (c.messages || []).forEach((m) => knownMsgIdsRef.current.add(m.id)));
       }
 
       setConversations((prev) => {
@@ -397,6 +504,19 @@ export default function ConversationsPage() {
       });
 
       setSelectedId((prev) => {
+        // Support direct ?phone=... deep-linking from Takeovers / Escalations
+        if (typeof window !== "undefined") {
+          const params = new URLSearchParams(window.location.search);
+          const phoneParam = params.get("phone");
+          if (phoneParam) {
+            const cleanTarget = phoneParam.replace(/\D/g, "").slice(-10);
+            const foundByParam = loadedConvs.find((c) => (c.mobile || "").includes(cleanTarget));
+            if (foundByParam) {
+              setMobileShowChat(true);
+              return foundByParam.id;
+            }
+          }
+        }
         if (prev && loadedConvs.some((c) => c.id === prev)) {
           return prev; // PRESERVE currently selected conversation!
         }
@@ -424,8 +544,8 @@ export default function ConversationsPage() {
 
   const currentConv = conversations.find((c) => c.id === selectedId) || conversations[0];
 
-  // Mark conversation as read when active
-  const markAsRead = (convId) => {
+  // Mark conversation as read when active (Issue 10: Synchronized across sessions)
+  const markAsRead = async (convId) => {
     if (!convId) return;
     const digits = convId.replace(/\D/g, "").slice(-10);
     if (!digits) return;
@@ -439,6 +559,15 @@ export default function ConversationsPage() {
     setConversations((prev) =>
       prev.map((c) => (c.id === convId ? { ...c, unreadCount: 0, isUnread: false } : c))
     );
+
+    // Synchronize to backend database
+    try {
+      await fetch("/api/whatsapp/messages", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mobile: "+91 " + digits, action: "mark_read" }),
+      });
+    } catch (e) {}
   };
 
   // Mark conversation as unread manually
@@ -462,6 +591,7 @@ export default function ConversationsPage() {
 
   const handleSelectConversation = (id) => {
     setSelectedId(id);
+    setMobileShowChat(true);
     markAsRead(id);
   };
 
@@ -611,6 +741,124 @@ export default function ConversationsPage() {
       toast.error(`Simulation failed: ${err.message}`);
     } finally {
       setIsSimulating(false);
+    }
+  };
+
+  // Issue 15: Browser MediaRecorder Audio Recording
+  const startAudioRecording = async () => {
+    try {
+      if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+        toast.error("Audio recording not supported. Opening audio file selector.");
+        audioInputRef.current?.click();
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingSeconds(0);
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds((prev) => prev + 1);
+      }, 1000);
+      toast.success("Recording voice message... Speak now.");
+    } catch (err) {
+      console.warn("Microphone permission denied:", err);
+      toast.error("Microphone access denied or unavailable. Opening file selector.");
+      audioInputRef.current?.click();
+    }
+  };
+
+  const cancelAudioRecording = () => {
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    if (mediaRecorderRef.current && isRecording) {
+      try {
+        const stream = mediaRecorderRef.current.stream;
+        if (stream) stream.getTracks().forEach((t) => t.stop());
+        mediaRecorderRef.current.stop();
+      } catch (e) {}
+    }
+    audioChunksRef.current = [];
+    setIsRecording(false);
+    setRecordingSeconds(0);
+    toast("Voice recording discarded", { icon: "🗑️" });
+  };
+
+  const stopAndSendAudioRecording = async () => {
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    if (!mediaRecorderRef.current || !isRecording) return;
+    setIsRecording(false);
+
+    mediaRecorderRef.current.onstop = async () => {
+      try {
+        const stream = mediaRecorderRef.current.stream;
+        if (stream) stream.getTracks().forEach((t) => t.stop());
+
+        if (audioChunksRef.current.length === 0) return;
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64Audio = reader.result;
+          setStagedAttachment({
+            file: new File([audioBlob], `voice_note_${Date.now()}.webm`, { type: "audio/webm" }),
+            previewUrl: base64Audio,
+            name: `Voice_Note_${new Date().toLocaleTimeString().replace(/:/g, "-")}.webm`,
+            type: "audio/webm",
+            size: audioBlob.size,
+          });
+          toast.success("Voice note ready to send. Press send or add a caption.");
+        };
+        reader.readAsDataURL(audioBlob);
+      } catch (e) {
+        console.error("Audio processing failed:", e);
+      }
+    };
+
+    try {
+      mediaRecorderRef.current.stop();
+    } catch (e) {}
+  };
+
+  // Export and Clear Chat handlers (Issue 11)
+  const handleExportChat = () => {
+    if (!currentConv) return;
+    const lines = (currentConv.messages || []).map((m) => {
+      const senderLabel =
+        m.sender === "patient"
+          ? currentConv.patientName
+          : m.sender === "bot"
+          ? "MediConnect Assistant"
+          : m.agentName || "Agent";
+      return `[${formatMessageTime(m.rawTimestamp, m.time)}] ${senderLabel}: ${m.text || m.media?.name || ""}`;
+    });
+    const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `MediConnect_Chat_${(currentConv.mobile || "").replace(/\D/g, "")}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setShowMoreMenu(false);
+    toast.success("Chat transcript downloaded");
+  };
+
+  const handleClearChat = () => {
+    if (!currentConv) return;
+    if (confirm(`Clear local chat history with ${currentConv.patientName}?`)) {
+      setConversations((prev) =>
+        prev.map((c) => (c.id === currentConv.id ? { ...c, messages: [] } : c))
+      );
+      setShowMoreMenu(false);
+      toast.success("Chat history cleared");
     }
   };
 
@@ -1027,13 +1275,23 @@ export default function ConversationsPage() {
           </div>
         </div>
 
-        {/* PANE 2: Active Chat Canvas (Center Column - Insign MultiChannel Style) */}
+        {/* PANE 2: Active Chat Canvas (Center Column - Issue 16: Mobile Toggle) */}
         {currentConv ? (
-          <div className="flex-1 flex flex-col h-full bg-[#efeae2] min-w-0 relative overflow-hidden">
+          <div className={`${!mobileShowChat ? "hidden md:flex" : "flex"} flex-1 flex flex-col h-full bg-[#efeae2] min-w-0 relative overflow-hidden`}>
             
             {/* Active Chat Header matching Screenshot 1 */}
-            <div className="h-[60px] px-4 bg-[#f0f2f5] border-b border-slate-200/90 flex items-center justify-between shadow-2xs z-10 flex-shrink-0">
-              <div className="flex items-center gap-3 min-w-0">
+            <div className="h-[60px] px-3 sm:px-4 bg-[#f0f2f5] border-b border-slate-200/90 flex items-center justify-between shadow-2xs z-10 flex-shrink-0">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                {/* Mobile Back Button (Issue 16) */}
+                <button
+                  type="button"
+                  onClick={() => setMobileShowChat(false)}
+                  className="md:hidden p-1.5 -ml-1 text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-200/80 transition cursor-pointer flex-shrink-0"
+                  title="Back to conversations"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+
                 <div className="relative">
                   {(() => {
                     const av = getAvatarInfo(currentConv.patientName, currentConv.mobile);
@@ -1055,51 +1313,78 @@ export default function ConversationsPage() {
                 </div>
               </div>
 
-              {/* Header Right Action Icons matching Screenshot 1 */}
-              <div className="flex items-center gap-3 text-[#54656f]">
+              {/* Header Right Action Icons (Issue 11: Functional Top Icons) */}
+              <div className="flex items-center gap-2 sm:gap-3 text-[#54656f]">
                 {/* Takeover status pill */}
                 {currentConv.takeoverStatus === "HUMAN_OWNERSHIP_ACTIVE" && (
-                  <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-300">
+                  <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-300">
                     Agent Claimed
                   </span>
                 )}
 
+                {/* 1. Phone Call Action */}
                 <button
                   type="button"
-                  onClick={() => setShowSimulateModal(true)}
+                  onClick={() => setShowCallModal(true)}
                   className="hover:text-slate-900 transition cursor-pointer p-1 rounded hover:bg-slate-200/70"
-                  title="Receive reply simulation"
+                  title="Direct Phone Call"
                 >
-                  <MessageSquare className="w-5 h-5" />
+                  <Phone className="w-5 h-5 text-emerald-600" />
                 </button>
 
+                {/* 2. Video Consultation Action */}
+                <button
+                  type="button"
+                  onClick={() => setShowVideoModal(true)}
+                  className="hover:text-slate-900 transition cursor-pointer p-1 rounded hover:bg-slate-200/70"
+                  title="Video Consultation Room"
+                >
+                  <Video className="w-5 h-5 text-sky-600" />
+                </button>
+
+                {/* 3. Search in Chat Action */}
+                <button
+                  type="button"
+                  onClick={() => setShowChatSearch(!showChatSearch)}
+                  className={`hover:text-slate-900 transition cursor-pointer p-1 rounded hover:bg-slate-200/70 ${
+                    showChatSearch ? "text-[#00a884] bg-slate-200/80" : ""
+                  }`}
+                  title="Search Messages in Chat"
+                >
+                  <Search className="w-5 h-5" />
+                </button>
+
+                {/* 4. Tags & Priority Action */}
+                <button
+                  type="button"
+                  onClick={() => setShowTagsModal(true)}
+                  className="hover:text-slate-900 transition cursor-pointer p-1 rounded hover:bg-slate-200/70"
+                  title="Tags & Priority Labels"
+                >
+                  <Tag className="w-5 h-5 text-purple-600" />
+                </button>
+
+                {/* 5. Contact Notes Info */}
                 <button
                   type="button"
                   onClick={() => setShowContactInfo(!showContactInfo)}
                   className="hover:text-slate-900 transition cursor-pointer p-1 rounded hover:bg-slate-200/70"
-                  title="Notes & Contact info"
+                  title="Patient Profile & Notes"
                 >
                   <FileText className="w-5 h-5" />
                 </button>
 
-                <button
-                  type="button"
-                  className="hover:text-slate-900 transition cursor-pointer p-1 rounded hover:bg-slate-200/70"
-                  title="Tags"
-                >
-                  <Tag className="w-5 h-5" />
-                </button>
-
+                {/* 6. Human Takeover Toggle */}
                 <button
                   type="button"
                   onClick={handleTakeoverToggle}
                   className="hover:text-slate-900 transition cursor-pointer p-1 rounded hover:bg-slate-200/70"
                   title="Agent takeover toggle"
                 >
-                  <UserCheck className="w-5 h-5" />
+                  <UserCheck className="w-5 h-5 text-amber-600" />
                 </button>
 
-                {/* More vertical options */}
+                {/* 7. Context Menu */}
                 <div className="relative">
                   <button
                     type="button"
@@ -1111,7 +1396,7 @@ export default function ConversationsPage() {
                   </button>
 
                   {showMoreMenu && (
-                    <div className="absolute right-0 top-8 bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 w-48 z-40 text-xs text-slate-700">
+                    <div className="absolute right-0 top-8 bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 w-52 z-40 text-xs text-slate-700">
                       <button
                         type="button"
                         onClick={() => markAsUnread(currentConv.id)}
@@ -1134,11 +1419,27 @@ export default function ConversationsPage() {
                       </button>
                       <button
                         type="button"
+                        onClick={handleExportChat}
+                        className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5 text-[#00629b]" />
+                        <span>Export Chat Transcript</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleClearChat}
+                        className="w-full px-3 py-2 text-left hover:bg-rose-50 text-rose-600 flex items-center gap-2 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Clear Chat History</span>
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => {
                           setShowSimulateModal(true);
                           setShowMoreMenu(false);
                         }}
-                        className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                        className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2 cursor-pointer border-t border-slate-100"
                       >
                         <Bot className="w-3.5 h-3.5 text-blue-600" />
                         <span>Simulate WhatsApp Inbound</span>
@@ -1148,6 +1449,44 @@ export default function ConversationsPage() {
                 </div>
               </div>
             </div>
+
+            {/* In-Chat Message Search Bar (Issue 11) */}
+            {showChatSearch && (
+              <div className="px-4 py-2 bg-white border-b border-slate-200 flex items-center justify-between text-xs z-10">
+                <div className="flex items-center gap-2 flex-1 max-w-md">
+                  <Search className="w-3.5 h-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search in this conversation..."
+                    value={chatSearchQuery}
+                    onChange={(e) => setChatSearchQuery(e.target.value)}
+                    className="w-full text-xs text-slate-800 placeholder-slate-400 focus:outline-none bg-transparent"
+                    autoFocus
+                  />
+                  {chatSearchQuery && (
+                    <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap">
+                      {
+                        (currentConv.messages || []).filter((m) =>
+                          (m.text || "").toLowerCase().includes(chatSearchQuery.toLowerCase())
+                        ).length
+                      }{" "}
+                      matches
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowChatSearch(false);
+                    setChatSearchQuery("");
+                  }}
+                  className="p-1 text-slate-400 hover:text-slate-600 rounded cursor-pointer"
+                  title="Close chat search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
 
             {/* Chat Messages Body with WhatsApp Web Wallpaper Background */}
             <div 
@@ -2206,6 +2545,166 @@ export default function ConversationsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 1. Direct Voice Call Modal (Issue 11) */}
+      {showCallModal && currentConv && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 max-w-sm w-full space-y-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Phone className="w-4 h-4 text-emerald-600" />
+                Initiate Patient Call
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowCallModal(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                <Phone className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-900">{currentConv.patientName}</p>
+                <p className="text-xs font-mono text-emerald-700">{currentConv.mobile}</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Dial the patient directly from your telephony dialer or copy the contact number:
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(currentConv.mobile);
+                  toast.success(`Copied ${currentConv.mobile} to clipboard`);
+                }}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>Copy</span>
+              </button>
+              <a
+                href={`tel:${(currentConv.mobile || "").replace(/\s+/g, "")}`}
+                className="px-4 py-2 bg-[#00a884] hover:bg-[#008f6f] text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 shadow-xs transition"
+              >
+                <Phone className="w-3.5 h-3.5" />
+                <span>Call Patient</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. Video Consultation Link Modal (Issue 11) */}
+      {showVideoModal && currentConv && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 max-w-md w-full space-y-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Video className="w-4 h-4 text-sky-600" />
+                Video Consultation Session
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowVideoModal(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-3 bg-sky-50 rounded-xl border border-sky-100 space-y-1">
+              <span className="text-[10px] uppercase font-bold text-sky-700 tracking-wider">Telemedicine Room URL:</span>
+              <p className="text-xs font-mono text-slate-800 break-all select-all">
+                {`https://mediconnect.fit/doctor/${(currentConv.mobile || "").replace(/\D/g, "").slice(-10)}?mode=telemedicine`}
+              </p>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Send the telemedicine session invitation directly into this patient&apos;s WhatsApp chat or launch the room now:
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const url = `https://mediconnect.fit/doctor/${(currentConv.mobile || "").replace(/\D/g, "").slice(-10)}?mode=telemedicine`;
+                  setReplyText(`Hello, your doctor is ready for your video consultation. Please tap the link to join: ${url}`);
+                  setShowVideoModal(false);
+                  inputRef.current?.focus();
+                  toast.success("Video room link inserted into message input");
+                }}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition cursor-pointer"
+              >
+                Insert in Chat
+              </button>
+              <a
+                href={`https://mediconnect.fit/doctor/${(currentConv.mobile || "").replace(/\D/g, "").slice(-10)}?mode=telemedicine`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-4 py-2 bg-[#00629b] hover:bg-[#004f7c] text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 shadow-xs transition"
+              >
+                <Video className="w-3.5 h-3.5" />
+                <span>Launch Video Room</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Tags & Priority Assignment Modal (Issue 11) */}
+      {showTagsModal && currentConv && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 max-w-sm w-full space-y-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Tag className="w-4 h-4 text-purple-600" />
+                Assign Patient Tag & Priority
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowTagsModal(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-500">
+              Select tag to categorize this conversation:
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { label: "P1 Critical", color: "bg-rose-100 text-rose-800 border-rose-200" },
+                { label: "Follow-up Required", color: "bg-amber-100 text-amber-800 border-amber-200" },
+                { label: "VIP Patient", color: "bg-purple-100 text-purple-800 border-purple-200" },
+                { label: "Prescription Ready", color: "bg-emerald-100 text-emerald-800 border-emerald-200" },
+                { label: "Consultation Booked", color: "bg-blue-100 text-blue-800 border-blue-200" },
+                { label: "General Inquiry", color: "bg-slate-100 text-slate-800 border-slate-200" },
+              ].map((t) => (
+                <button
+                  key={t.label}
+                  type="button"
+                  onClick={() => {
+                    setConversations((prev) =>
+                      prev.map((c) =>
+                        c.id === currentConv.id
+                          ? { ...c, escalationTag: t.label }
+                          : c
+                      )
+                    );
+                    setShowTagsModal(false);
+                    toast.success(`Assigned tag "${t.label}" to ${currentConv.patientName}`);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-semibold transition cursor-pointer hover:scale-105 ${t.color}`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}

@@ -181,9 +181,14 @@ async function sendWhatsAppDualRedirect(to, {
   imageUrl = null,
   webUrl,
   webTitle = "🌐 Book Online",
-  appUrl = "https://mediconnect.fit/app",
+  appUrl = null,
   appTitle = "📱 Book on App",
 }) {
+  const safeWebUrl = webUrl || "https://mediconnect.fit/find-doctors";
+  const safeAppUrl = (appUrl && !appUrl.endsWith("/app") && !appUrl.includes("mediconnect.fit/app"))
+    ? appUrl
+    : safeWebUrl;
+
   // 1. Send primary Web CTA button (with doctor image if provided)
   await sendWhatsAppCtaUrl(to, {
     header,
@@ -191,7 +196,7 @@ async function sendWhatsAppDualRedirect(to, {
     imageUrl,
     footer: "MediConnect Web Platform",
     buttonText: webTitle,
-    url: webUrl,
+    url: safeWebUrl,
   });
 
   // Small delay to prevent Insign API rate drops
@@ -203,12 +208,36 @@ async function sendWhatsAppDualRedirect(to, {
     body: "📱 *Prefer Mobile App?*\nTap below to confirm and track your booking in the official MediConnect app:",
     footer: "Available for Android & iOS",
     buttonText: appTitle,
-    url: appUrl,
+    url: safeAppUrl,
   });
 }
 
 // Verified MediConnect Panel Specialists for departments where real doctors are not yet onboarded in Supabase
 const FALLBACK_PANEL_DOCTORS = {
+  ent: [
+    {
+      id: "doc-panel-ent-1",
+      name: "Dr. Saurabh Bansal",
+      specialization: "ENT (Otorhinolaryngology)",
+      experience: "12 Years Experience",
+      verifiedBadge: "✅ Verified Specialist",
+      clinic: "Apollo Spectra / MediConnect Partner Clinic",
+      fee: 500,
+      profilePicture: "https://ui-avatars.com/api/?name=Saurabh+Bansal&background=0067A1&color=fff&bold=true",
+    },
+  ],
+  dent: [
+    {
+      id: "doc-panel-dent-1",
+      name: "Dr. Neha Gupta",
+      specialization: "Dentistry (Dental & Oral Surgeon)",
+      experience: "10 Years Experience",
+      verifiedBadge: "✅ Verified Specialist",
+      clinic: "Clove Dental / MediConnect Partner Clinic",
+      fee: 400,
+      profilePicture: "https://ui-avatars.com/api/?name=Neha+Gupta&background=0067A1&color=fff&bold=true",
+    },
+  ],
   opht: [
     {
       id: "doc-panel-opht-1",
@@ -458,20 +487,24 @@ function detectSpecialtyKey(lowerText, buttonId, lastBotMsg) {
   }
 
   // 3. Department names, aliases, and comprehensive symptom keywords
+  // Dentistry (Teeth, Oral Health, Gums, Orthodontics) - Checked before Orthopedics to avoid orthodontics -> ortho false positive
+  if (clean.includes("dent") || clean.includes("teeth") || clean.includes("tooth") || clean.includes("oral") || clean.includes("gum") || clean.includes("cavity") || clean.includes("root canal") || clean.includes("orthodont") || clean.includes("periodont") || clean.includes("braces") || clean.includes("molar") || clean.includes("plaque")) {
+    return "dent";
+  }
   // Urology
   if (!clean.includes("neuro") && (clean.includes("uro") || clean.includes("urina") || clean.includes("prostate") || clean.includes("stone") || clean.includes("burning urine") || clean.includes("uti") || clean.includes("dysuria"))) {
     return "uro";
   }
   // Cardiology
-  if (clean.includes("cardio") || clean.includes("heart") || clean.includes("chest pain") || clean.includes("chest tight") || clean.includes("bp") || clean.includes("hypertens") || clean.includes("palpitat")) {
+  if (clean.includes("cardio") || clean.includes("heart") || clean.includes("chest pain") || clean.includes("chest tight") || /\b(bp|high\s*bp|blood\s*pressure)\b/i.test(clean) || clean.includes("hypertens") || clean.includes("palpitat")) {
     return "cardio";
   }
-  // Dermatology (Skin, Hair, Nails)
-  if (clean.includes("derma") || clean.includes("skin") || clean.includes("acne") || clean.includes("rash") || clean.includes("hair") || clean.includes("dandruff") || clean.includes("scalp") || clean.includes("bald") || clean.includes("alopecia") || clean.includes("itch") || clean.includes("eczema") || clean.includes("psoriasis") || clean.includes("fungal") || clean.includes("nail") || clean.includes("pigment")) {
+  // Dermatology (Skin, Hair, Nails) - Guard against "chair" matching "hair" or "email" matching "nail"
+  if (clean.includes("derma") || clean.includes("skin") || clean.includes("acne") || clean.includes("rash") || /\b(hair|hairfall|hair\s*fall|hairloss|hair\s*loss)\b/i.test(clean) || clean.includes("dandruff") || clean.includes("scalp") || clean.includes("bald") || clean.includes("alopecia") || clean.includes("itch") || clean.includes("eczema") || clean.includes("psoriasis") || clean.includes("fungal") || /\b(nail|nails|ingrown\s*nail)\b/i.test(clean) || clean.includes("pigment")) {
     return "derma";
   }
-  // Orthopedics (Bones, Joints, Spine)
-  if (clean.includes("ortho") || clean.includes("bone") || clean.includes("joint") || clean.includes("fractur") || clean.includes("spine") || clean.includes("back pain") || clean.includes("backache") || clean.includes("knee pain") || clean.includes("sciatica") || clean.includes("slip disc") || clean.includes("sprain") || clean.includes("cervical") || clean.includes("neck pain") || clean.includes("shoulder pain")) {
+  // Orthopedics (Bones, Joints, Spine) - Excludes dental/orthodontic
+  if (!clean.includes("orthodont") && (clean.includes("ortho") || clean.includes("bone") || clean.includes("joint") || clean.includes("fractur") || clean.includes("spine") || clean.includes("back pain") || clean.includes("backache") || clean.includes("knee pain") || clean.includes("sciatica") || clean.includes("slip disc") || clean.includes("sprain") || clean.includes("cervical") || clean.includes("neck pain") || clean.includes("shoulder pain"))) {
     return "ortho";
   }
   // Pediatrics (Child Care)
@@ -486,7 +519,7 @@ function detectSpecialtyKey(lowerText, buttonId, lastBotMsg) {
     return "gynec";
   }
   // Ophthalmology (Eye Care)
-  if (clean.includes("opht") || clean.includes("eye") || clean.includes("vision") || clean.includes("cataract") || clean.includes("glasses") || clean.includes("specs") || clean.includes("blurred")) {
+  if (clean.includes("opht") || /\b(eye|eyes|vision|cataract|glasses|specs|blurred\s*vision)\b/i.test(clean)) {
     return "opht";
   }
   // Neurology (Brain, Nerves, Headaches)
@@ -509,16 +542,12 @@ function detectSpecialtyKey(lowerText, buttonId, lastBotMsg) {
   if (clean.includes("pulmo") || clean.includes("lung") || clean.includes("asthma") || clean.includes("breath") || clean.includes("wheez") || clean.includes("chronic cough")) {
     return "pulmo";
   }
-  // Dentistry (Teeth, Oral Health)
-  if (clean.includes("dent") || clean.includes("teeth") || clean.includes("tooth") || clean.includes("oral") || clean.includes("gum") || clean.includes("cavity") || clean.includes("root canal")) {
-    return "dent";
-  }
-  // Gastroenterology (Stomach, Digestion, Acidity)
-  if (clean.includes("gastro") || clean.includes("stomach") || clean.includes("liver") || clean.includes("digest") || clean.includes("acid") || clean.includes("acidity") || clean.includes("gas") || clean.includes("gerd") || clean.includes("vomit") || clean.includes("nausea") || clean.includes("loose motion") || clean.includes("diarrhea") || clean.includes("constipat") || clean.includes("bloat") || clean.includes("piles") || clean.includes("fissure") || clean.includes("jaundice")) {
+  // Gastroenterology (Stomach, Digestion, Acidity) - Guard against "accident" matching "acid"
+  if (clean.includes("gastro") || clean.includes("stomach") || clean.includes("liver") || clean.includes("digest") || /\b(acid|acidity|gas|gerd|reflux)\b/i.test(clean) || clean.includes("vomit") || clean.includes("nausea") || clean.includes("loose motion") || clean.includes("diarrhea") || clean.includes("constipat") || clean.includes("bloat") || clean.includes("piles") || clean.includes("fissure") || clean.includes("jaundice")) {
     return "gastro";
   }
-  // ENT (Ear, Nose, Throat)
-  if ((clean.includes("ent") && !clean.includes("dent") && !clean.includes("gastro") && !clean.includes("treat") && !clean.includes("urgent")) || clean.includes("ear") || clean.includes("throat") || clean.includes("nose") || clean.includes("sinus") || clean.includes("hearing") || clean.includes("otorhino") || clean.includes("tonsil") || clean.includes("sore throat")) {
+  // ENT (Ear, Nose, Throat) - Guard against "search", "yearly", "clear", "hear", "nearby" matching "ear"
+  if ((clean.includes("ent") && !clean.includes("dent") && !clean.includes("gastro") && !clean.includes("treat") && !clean.includes("urgent")) || /\b(ear|ears|earache|throat|nose|sinus|hearing|tonsils?|sore\s*throat)\b/i.test(clean) || clean.includes("otorhino")) {
     return "ent";
   }
   // Oncology (Cancer Care)
@@ -537,8 +566,8 @@ function detectSpecialtyKey(lowerText, buttonId, lastBotMsg) {
   if ((clean.includes("surg") && !clean.includes("neurosurg")) || clean.includes("hernia") || clean.includes("appendix")) {
     return "surgery";
   }
-  // General Physician
-  if (clean === "gp" || clean.includes("general physician") || clean.includes("general medicine") || clean.includes("physician") || clean.includes("fever") || clean.includes("cold") || clean.includes("cough") || clean.includes("weakness") || clean.includes("fatigue") || clean.includes("body ache") || clean.includes("chills") || clean.includes("viral") || clean.includes("flu")) {
+  // General Physician (Only real clinical general symptoms or explicit doctor/physician request)
+  if (clean === "gp" || clean.includes("general physician") || clean.includes("general medicine") || clean.includes("physician") || /\b(fever|cold|cough|weakness|fatigue|body\s*ache|chills|viral|flu)\b/i.test(clean)) {
     return "general";
   }
 
@@ -552,8 +581,12 @@ async function classifyHealthConcernWithAI(userText) {
 
   try {
     const prompt = `You are a medical triage assistant for MediConnect.fit healthcare platform.
-Analyze the user's message/symptom and map it to exactly ONE of the following 21 specialty keys:
-- general: General physician, fever, cold, weakness, infection, fatigue, viral, flu
+Analyze the user's message.
+
+CRITICAL INSTRUCTIONS:
+- If the user's message is a greeting, pleasantry, acknowledgment ("ok", "thanks", "done", "yes", "no", "bye"), general question (about platform, pricing, clinic address, working hours, services), or does NOT describe a specific medical symptom, condition, illness, or doctor specialty request, respond ONLY with "none".
+- ONLY if the user describes a real clinical health symptom, medical complaint, or asks for a specific doctor specialty, map it to ONE of the following 21 keys:
+- general: General physician, fever, cold, cough, infection, weakness, fatigue, viral, flu, body ache, feverish
 - derma: Dermatology, skin, hair, hair fall, hair loss, dandruff, scalp, acne, rash, itching, eczema, fungal, nail
 - gynec: Gynecology, women health, periods, pcod, pcos, cramps, pregnancy, discharge
 - pedia: Pediatrics, child, baby, newborn, infant, vaccination
@@ -577,7 +610,7 @@ Analyze the user's message/symptom and map it to exactly ONE of the following 21
 
 User input: "${userText.replace(/"/g, '')}"
 
-Respond ONLY with the single lowercase specialty key (e.g. "derma", "gastro", "cardio", "general"). Nothing else.`;
+Respond ONLY with the single lowercase key (e.g. "derma", "gastro", "cardio", "general", or "none"). Nothing else.`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 2500);
@@ -601,6 +634,10 @@ Respond ONLY with the single lowercase specialty key (e.g. "derma", "gastro", "c
     if (res.ok) {
       const data = await res.json();
       const spec = data?.choices?.[0]?.message?.content?.trim().toLowerCase();
+      if (!spec || spec === "none") {
+        console.log(`[AI Triage] Non-medical/conversational query "${userText}" -> null`);
+        return null;
+      }
       const validKeys = [
         "general", "derma", "gynec", "pedia", "ortho", "obgyn", "opht",
         "cardio", "neuro", "endo", "nephro", "psych", "pulmo", "dent",
@@ -924,26 +961,29 @@ export async function POST(req) {
         );
 
         const isGreeting =
+          /^(h+[aeiouy]+[yw]*|hello+[w]*|helo+|hlo+|namaste|namaskar|pranam|greetings|start|menu|help|main\s*menu|yo|hola|good\s*(morning|afternoon|evening))(\b|[!?,.\s]|$)/i.test(
+            lowerText
+          ) ||
           lowerText === "hi" ||
           lowerText === "hello" ||
-          lowerText === "hellow" ||
-          lowerText === "hlo" ||
           lowerText === "hey" ||
-          lowerText === "heyy" ||
-          lowerText === "hii" ||
-          lowerText === "hiii" ||
-          lowerText === "namaste" ||
-          lowerText === "start" ||
-          lowerText === "menu" ||
-          lowerText === "help" ||
-          lowerText === "main menu" ||
-          lowerText.startsWith("good morning") ||
-          lowerText.startsWith("good afternoon") ||
-          lowerText.startsWith("good evening");
+          lowerText === "hy" ||
+          lowerText === "huy" ||
+          lowerText === "huyy";
+
+        const isPleasantry =
+          /^(ok|okay|k|done|thanks|thank\s*you|thx|thnx|bye|goodbye|cya|cool|sure|alright|fine|got\s*it)(\b|[!?,.\s]|$)/i.test(
+            lowerText
+          );
+
+        const isSupportRequest =
+          /^(support|customer\s*care|care\s*team|agent|human|talk\s*to\s*(agent|human|person|support)|call\s*me|helpline|contact)(\b|[!?,.\s]|$)/i.test(
+            lowerText
+          );
 
         // Pre-compute specialty key matching for Level 3.1.2 routing
         let detectedSpecKey = detectSpecialtyKey(lowerText, buttonId, lastBotMsg);
-        if (!detectedSpecKey && !buttonId && !isGreeting && !isMediaMessage && lowerText.length > 2) {
+        if (!detectedSpecKey && !buttonId && !isGreeting && !isPleasantry && !isSupportRequest && !isMediaMessage && lowerText.length > 2) {
           detectedSpecKey = await classifyHealthConcernWithAI(textContent);
         }
 
@@ -1011,6 +1051,43 @@ export async function POST(req) {
               { id: "nav_main_menu", title: "Main Menu" },
             ],
           });
+        }
+
+        // ── LEVEL 1.2: PLEASANTRIES & ACKNOWLEDGMENTS ──
+        else if (isPleasantry && !buttonId) {
+          const pleasantryReply =
+            "You're very welcome! 😊\n\nMediConnect is here 24/7 whenever you need a doctor consultation, diagnostic tests, or medical records. Please choose a service below or type anytime:";
+          await sendWhatsAppButtons(fromNumber, {
+            header: "MediConnect.fit",
+            body: pleasantryReply,
+            buttons: [
+              { id: "menu_consultation", title: "Doctor Consult" },
+              { id: "menu_healthcare", title: "Health Services" },
+              { id: "nav_main_menu", title: "Main Menu" },
+            ],
+          });
+          await recordBotMessage(pleasantryReply, {
+            buttons: [
+              { id: "menu_consultation", title: "Doctor Consult" },
+              { id: "menu_healthcare", title: "Health Services" },
+              { id: "nav_main_menu", title: "Main Menu" },
+            ],
+          });
+        }
+
+        // ── LEVEL 1.3: SUPPORT & HUMAN AGENT REQUESTS ──
+        else if (isSupportRequest && !buttonId) {
+          const supportText =
+            `🧑‍💼 *MediConnect Healthcare Support Desk*\n\n` +
+            `A dedicated care coordinator has joined this conversation. Please describe your question or issue, and we will assist you immediately.\n\n` +
+            `📞 *Direct Helplines*:\n` +
+            `• Patient Support: +91 7289043888\n` +
+            `• Care Coordinator Hotline: +91 7289043777\n` +
+            `• Priority Speed Dial: 888\n\n` +
+            `📧 *Support Email*: support@mediconnect.fit\n` +
+            `⏰ *Calling Support Hours*: 9 AM – 9 PM`;
+          await sendWhatsAppTextMessage(fromNumber, supportText);
+          await recordBotMessage(supportText);
         }
 
         // ── LEVEL 2.1: DOCTOR CONSULTATION ───────────────────────────────
@@ -1143,20 +1220,30 @@ export async function POST(req) {
             imageUrl: null,
             webUrl: "https://mediconnect.fit/doctors",
             webTitle: "🌐 View Doctors",
-            appUrl: "https://mediconnect.fit/app",
+            appUrl: "https://mediconnect.fit/find-doctors",
             appTitle: "📱 Book on App",
           });
 
           await recordBotMessage(docDirectoryBody, {
             actionUrl: "https://mediconnect.fit/doctors",
             actionTitle: "🌐 View Doctors",
-            appUrl: "https://mediconnect.fit/app",
+            appUrl: "https://mediconnect.fit/find-doctors",
             appTitle: "📱 Book on App",
           });
         }
 
         // ── LEVEL 3.1.2: SPECIALTY SELECTED -> SHOW THE LIST OF ALL DOCTORS OF THAT SPECIALTY ──
-        else if (detectedSpecKey) {
+        else if (
+          detectedSpecKey &&
+          (detectedSpecKey !== "general" ||
+            buttonId === "spec_gp" ||
+            (isLastMsgSpecialtyList && (lowerText === "1" || lowerText === "1.")) ||
+            lowerText === "general physician" ||
+            lowerText === "general medicine" ||
+            lowerText === "physician" ||
+            lowerText === "gp" ||
+            /\b(fever|cold|cough|weakness|fatigue|body\s*ache|chills|viral|flu|infection)\b/i.test(lowerText))
+        ) {
           const specKey = detectedSpecKey;
 
           const specInfoMap = {
@@ -1176,7 +1263,7 @@ export async function POST(req) {
             dent: { title: "Dentists", target: "Dentistry" },
             surgery: { title: "General Surgeons", target: "General Surgery" },
             gastro: { title: "Gastroenterologists", target: "Gastroenterology" },
-            ent: { title: "ENT Specialists", target: "ENT" },
+            ent: { title: "ENT Specialists", target: "ENT (Otorhinolaryngology)" },
             uro: { title: "Urologists", target: "Urology" },
             onco: { title: "Oncology", target: "Oncology" },
             rheum: { title: "Rheumatologists", target: "Rheumatology" },
@@ -1219,7 +1306,7 @@ export async function POST(req) {
             imageUrl: topDocs[0]?.profilePicture || null,
             webUrl: specialtyWebUrl,
             webTitle: specialtyWebTitle,
-            appUrl: "https://mediconnect.fit/app",
+            appUrl: "https://mediconnect.fit/find-doctors",
             appTitle: "📱 Book on App",
           });
 
@@ -1228,7 +1315,7 @@ export async function POST(req) {
             media: topDocs[0]?.profilePicture || null,
             actionUrl: specialtyWebUrl,
             actionTitle: specialtyWebTitle,
-            appUrl: "https://mediconnect.fit/app",
+            appUrl: "https://mediconnect.fit/find-doctors",
             appTitle: "📱 Book on App",
           });
         }
@@ -1365,8 +1452,8 @@ export async function POST(req) {
             await recordBotMessage(noDoc);
             return;
           }
-          const doctorBookingUrl = `https://mediconnect.fit/website/doctor/${matchedDoctor.id}`;
-          const appBookingUrl = "https://mediconnect.fit/app";
+          const doctorBookingUrl = `https://mediconnect.fit/doctor/${matchedDoctor.id}`;
+          const appBookingUrl = `https://mediconnect.fit/doctor/${matchedDoctor.id}?mode=telemedicine`;
           const clinicName = sanitizeClinicName(matchedDoctor.clinic);
 
           const detailsBody =
@@ -1525,14 +1612,14 @@ export async function POST(req) {
             body: labBody,
             webUrl: pkg.webUrl,
             webTitle: "🧪 Book Lab Test",
-            appUrl: "https://mediconnect.fit/app",
+            appUrl: "https://mediconnect.fit/find-doctors",
             appTitle: "📱 Book on App",
           });
 
           await recordBotMessage(labBody, {
             actionUrl: pkg.webUrl,
             actionTitle: "🧪 Book Lab Test",
-            appUrl: "https://mediconnect.fit/app",
+            appUrl: "https://mediconnect.fit/find-doctors",
             appTitle: "📱 Book on App",
           });
         }
@@ -1592,14 +1679,14 @@ export async function POST(req) {
             body: inLabBody,
             webUrl: scan.webUrl,
             webTitle: "🏥 Book In-Lab",
-            appUrl: "https://mediconnect.fit/app",
+            appUrl: "https://mediconnect.fit/find-doctors",
             appTitle: "📱 Book on App",
           });
 
           await recordBotMessage(inLabBody, {
             actionUrl: scan.webUrl,
             actionTitle: "🏥 Book In-Lab",
-            appUrl: "https://mediconnect.fit/app",
+            appUrl: "https://mediconnect.fit/find-doctors",
             appTitle: "📱 Book on App",
           });
         }
@@ -1738,14 +1825,14 @@ export async function POST(req) {
             body: nurseBody,
             webUrl: "https://mediconnect.fit/nursing-care",
             webTitle: "🩺 Book Nursing Care",
-            appUrl: "https://mediconnect.fit/app",
+            appUrl: "https://mediconnect.fit/find-doctors",
             appTitle: "📱 Open Mobile App",
           });
 
           await recordBotMessage(nurseBody, {
             actionUrl: "https://mediconnect.fit/nursing-care",
             actionTitle: "🩺 Book Nursing Care",
-            appUrl: "https://mediconnect.fit/app",
+            appUrl: "https://mediconnect.fit/find-doctors",
             appTitle: "📱 Open Mobile App",
           });
         }
@@ -1766,14 +1853,14 @@ export async function POST(req) {
             body: pharmBody,
             webUrl: "https://mediconnect.fit/medicine-order",
             webTitle: "💊 Order Medicines",
-            appUrl: "https://mediconnect.fit/app",
+            appUrl: "https://mediconnect.fit/find-doctors",
             appTitle: "📱 Order in App",
           });
 
           await recordBotMessage(pharmBody, {
             actionUrl: "https://mediconnect.fit/medicine-order",
             actionTitle: "💊 Order Medicines",
-            appUrl: "https://mediconnect.fit/app",
+            appUrl: "https://mediconnect.fit/find-doctors",
             appTitle: "📱 Order in App",
           });
         }
@@ -1942,14 +2029,14 @@ export async function POST(req) {
               body: historyBody,
               webUrl: "https://mediconnect.fit/login?redirect=/website/appointments",
               webTitle: "🌐 View History",
-              appUrl: "https://mediconnect.fit/app",
+              appUrl: "https://mediconnect.fit/find-doctors",
               appTitle: "📱 View in App",
             });
 
             await recordBotMessage(historyBody, {
               actionUrl: "https://mediconnect.fit/login?redirect=/website/appointments",
               actionTitle: "🌐 View History",
-              appUrl: "https://mediconnect.fit/app",
+              appUrl: "https://mediconnect.fit/find-doctors",
               appTitle: "📱 View in App",
             });
           } else {
@@ -1964,14 +2051,14 @@ export async function POST(req) {
               body: noHistoryBody,
               webUrl: "https://mediconnect.fit/login?redirect=/website/appointments",
               webTitle: "🌐 MediConnect Web",
-              appUrl: "https://mediconnect.fit/app",
+              appUrl: "https://mediconnect.fit/find-doctors",
               appTitle: "📱 Open App",
             });
 
             await recordBotMessage(noHistoryBody, {
               actionUrl: "https://mediconnect.fit/login?redirect=/website/appointments",
               actionTitle: "🌐 MediConnect Web",
-              appUrl: "https://mediconnect.fit/app",
+              appUrl: "https://mediconnect.fit/find-doctors",
               appTitle: "📱 Open App",
             });
           }
@@ -1989,14 +2076,14 @@ export async function POST(req) {
             body: abhaBody,
             webUrl: "https://mediconnect.fit/abha",
             webTitle: "🪪 Link ABHA",
-            appUrl: "https://mediconnect.fit/app",
+            appUrl: "https://mediconnect.fit/find-doctors",
             appTitle: "📱 Link in App",
           });
 
           await recordBotMessage(abhaBody, {
             actionUrl: "https://mediconnect.fit/abha",
             actionTitle: "🪪 Link ABHA",
-            appUrl: "https://mediconnect.fit/app",
+            appUrl: "https://mediconnect.fit/find-doctors",
             appTitle: "📱 Link in App",
           });
         }
@@ -2013,14 +2100,14 @@ export async function POST(req) {
             body: rxBody,
             webUrl: "https://mediconnect.fit/digital-health-records",
             webTitle: "📄 View Records",
-            appUrl: "https://mediconnect.fit/app",
+            appUrl: "https://mediconnect.fit/find-doctors",
             appTitle: "📱 View in App",
           });
 
           await recordBotMessage(rxBody, {
             actionUrl: "https://mediconnect.fit/digital-health-records",
             actionTitle: "📄 View Records",
-            appUrl: "https://mediconnect.fit/app",
+            appUrl: "https://mediconnect.fit/find-doctors",
             appTitle: "📱 View in App",
           });
         }
@@ -2060,14 +2147,19 @@ export async function POST(req) {
             labSearchResult = await searchLabTestsFromApi(textContent);
           }
 
-          // 2. If not an explicit lab query or no lab tests matched, search verified doctors
+          // 2. Search verified doctors ONLY when user has explicit doctor or clinical intent
+          const hasDoctorSearchIntent =
+            Boolean(doctorNameMatch) ||
+            Boolean(detectedSpecKey) ||
+            /\b(dr\.?|doctor|doctors|specialist|specialists|clinic|clinics|hospital|consultation|appointment|fever|cold|cough|pain|skin|heart|bone|child|eye|teeth|stomach|kidney)\b/i.test(lowerText);
+
           let matchedDoctors = [];
-          if (!isExplicitLabKeyword || (labSearchResult && labSearchResult.type === "tests_found" && labSearchResult.tests.length === 0)) {
+          if (hasDoctorSearchIntent && (!isExplicitLabKeyword || (labSearchResult && labSearchResult.type === "tests_found" && labSearchResult.tests.length === 0))) {
             matchedDoctors = await searchDoctorsFromApi(textContent);
           }
 
-          // 3. If no doctors matched and we haven't searched lab tests yet, try lab tests before fallback
-          if (matchedDoctors.length === 0 && !labSearchResult) {
+          // 3. If explicit lab keyword but not searched yet, search lab tests
+          if (isExplicitLabKeyword && !labSearchResult) {
             labSearchResult = await searchLabTestsFromApi(textContent);
           }
 
@@ -2082,14 +2174,14 @@ export async function POST(req) {
               body: formattedLabText,
               webUrl: "https://mediconnect.fit/services/lab-tests",
               webTitle: isScan ? "🧪 Book Scan Online" : "🧪 Book Lab Tests",
-              appUrl: "https://mediconnect.fit/app",
+              appUrl: "https://mediconnect.fit/find-doctors",
               appTitle: "📱 Book on App",
             });
 
             await recordBotMessage(formattedLabText, {
               actionUrl: "https://mediconnect.fit/services/lab-tests",
               actionTitle: isScan ? "🧪 Book Scan Online" : "🧪 Book Lab Tests",
-              appUrl: "https://mediconnect.fit/app",
+              appUrl: "https://mediconnect.fit/find-doctors",
               appTitle: "📱 Book on App",
               buttons: labSearchResult.tests.slice(0, 3).map((t) => ({
                 id: `test_${t.test_name.slice(0, 15)}`,
@@ -2106,14 +2198,14 @@ export async function POST(req) {
               body: formattedLabText,
               webUrl: "https://mediconnect.fit/services/lab-tests",
               webTitle: "🧪 View All Labs",
-              appUrl: "https://mediconnect.fit/app",
+              appUrl: "https://mediconnect.fit/find-doctors",
               appTitle: "📱 Book on App",
             });
 
             await recordBotMessage(formattedLabText, {
               actionUrl: "https://mediconnect.fit/services/lab-tests",
               actionTitle: "🧪 View All Labs",
-              appUrl: "https://mediconnect.fit/app",
+              appUrl: "https://mediconnect.fit/find-doctors",
               appTitle: "📱 Book on App",
               buttons: labSearchResult.labs.slice(0, 3).map((l) => ({
                 id: `lab_${l.id}`,
@@ -2177,15 +2269,15 @@ export async function POST(req) {
             } else if (lTxt.includes("pulmo") || lTxt.includes("lung") || lTxt.includes("asthma") || lTxt.includes("breath")) {
               filteredWebUrl = "https://mediconnect.fit/doctors?specialty=Pulmonology&search=Pulmonology";
               filteredWebTitle = "🌐 Pulmonologists";
+            } else if ((lTxt.includes("ent") && !lTxt.includes("dent") && !lTxt.includes("gastro")) || /\b(ear|ears|earache|throat|nose|sinus|hearing|tonsils?|sore\s*throat)\b/i.test(lTxt) || lTxt.includes("otorhino")) {
+              filteredWebUrl = "https://mediconnect.fit/doctors?specialty=ENT%20(Otorhinolaryngology)&search=ENT";
+              filteredWebTitle = "🌐 ENT Specialists";
             } else if (lTxt.includes("dent") || lTxt.includes("teeth") || lTxt.includes("tooth") || lTxt.includes("gum") || lTxt.includes("oral")) {
               filteredWebUrl = "https://mediconnect.fit/doctors?specialty=Dentistry&search=Dentistry";
               filteredWebTitle = "🌐 Dentists";
             } else if (lTxt.includes("gastro") || lTxt.includes("stomach") || lTxt.includes("acid") || lTxt.includes("liver") || lTxt.includes("digest")) {
               filteredWebUrl = "https://mediconnect.fit/doctors?specialty=Gastroenterology&search=Gastroenterology";
               filteredWebTitle = "🌐 Gastroenterologists";
-            } else if (lTxt.includes("ent") || lTxt.includes("ear") || lTxt.includes("throat") || lTxt.includes("sinus") || lTxt.includes("hearing")) {
-              filteredWebUrl = "https://mediconnect.fit/doctors?specialty=ENT&search=ENT";
-              filteredWebTitle = "🌐 ENT Specialists";
             } else if (lTxt.includes("uro") || lTxt.includes("urina") || lTxt.includes("prostate") || lTxt.includes("stone")) {
               filteredWebUrl = "https://mediconnect.fit/doctors?specialty=Urology&search=Urology";
               filteredWebTitle = "🌐 Urologists";
@@ -2213,7 +2305,7 @@ export async function POST(req) {
               imageUrl: topMatches[0]?.profilePicture,
               webUrl: filteredWebUrl,
               webTitle: filteredWebTitle,
-              appUrl: "https://mediconnect.fit/app",
+              appUrl: "https://mediconnect.fit/find-doctors",
               appTitle: "📱 Book on App",
             });
 
@@ -2222,31 +2314,36 @@ export async function POST(req) {
               media: topMatches[0]?.profilePicture,
               actionUrl: filteredWebUrl,
               actionTitle: filteredWebTitle,
-              appUrl: "https://mediconnect.fit/app",
+              appUrl: "https://mediconnect.fit/find-doctors",
               appTitle: "📱 Book on App",
             });
           }
-          // D. Fallback with direct interactive CTA button (both Web and App)
+          // D. Fallback for Unrecognized / Unwanted messages (Never sends doctors)
           else {
             const fallbackBody =
-              `Thank you for reaching out to *MediConnect.fit*.\n\n` +
-              `Explore verified doctors, book appointments, or schedule home lab tests on our official platform:\n\n` +
-              `Reply *menu* anytime to view all services, or reply *support* to chat with our healthcare coordinator.`;
+              `I didn't quite catch that. 😊\n\n` +
+              `*MediConnect.fit* is your 24/7 digital healthcare companion. How can we help you today?\n\n` +
+              `1️⃣ *Doctor Consultation* — Telemedicine or In-Clinic\n` +
+              `2️⃣ *Health Services* — Home Lab Tests & Scans\n` +
+              `3️⃣ *Support & Records* — Speak with Care Team\n\n` +
+              `_💡 Or type your symptom directly (e.g. "fever", "chest pain", "skin rash") or reply *menu*._`;
 
-            await sendWhatsAppDualRedirect(fromNumber, {
+            await sendWhatsAppButtons(fromNumber, {
               header: "MediConnect Healthcare",
               body: fallbackBody,
-              webUrl: "https://mediconnect.fit/doctors",
-              webTitle: "🌐 Explore Web",
-              appUrl: "https://mediconnect.fit/app",
-              appTitle: "📱 Open App",
+              buttons: [
+                { id: "menu_consultation", title: "Doctor Consult" },
+                { id: "menu_healthcare", title: "Health Services" },
+                { id: "menu_support", title: "Support & Records" },
+              ],
             });
 
             await recordBotMessage(fallbackBody, {
-              actionUrl: "https://mediconnect.fit/doctors",
-              actionTitle: "🌐 Explore Web",
-              appUrl: "https://mediconnect.fit/app",
-              appTitle: "📱 Open App",
+              buttons: [
+                { id: "menu_consultation", title: "Doctor Consult" },
+                { id: "menu_healthcare", title: "Health Services" },
+                { id: "menu_support", title: "Support & Records" },
+              ],
             });
           }
         }
