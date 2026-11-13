@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import * as XLSX from "xlsx";
 import {
   Send,
   Plus,
@@ -19,6 +20,9 @@ import {
   FileText,
   Smartphone,
   ExternalLink,
+  FileSpreadsheet,
+  Upload,
+  Download,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -34,6 +38,11 @@ export default function BroadcastsPage() {
   const [kpiFilter, setKpiFilter] = useState("ALL");
   const [selectedCampaign, setSelectedCampaign] = useState(null);
   const [totalActiveAudience, setTotalActiveAudience] = useState(5);
+
+  // Excel Upload states
+  const excelInputRef = useRef(null);
+  const [excelFileName, setExcelFileName] = useState("");
+  const [excelParsedCount, setExcelParsedCount] = useState(0);
 
   const [form, setForm] = useState({
     campaignName: "",
@@ -121,6 +130,186 @@ export default function BroadcastsPage() {
     loadBroadcastsFromDb();
     loadLiveTemplates();
   }, []);
+
+  // ─────────────────────────────────────────────────────────────
+  // Excel Sheet Handlers: Upload, Parse, Sample, Export
+  // ─────────────────────────────────────────────────────────────
+  const handleExcelUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+        if (!rows || rows.length === 0) {
+          toast.error("The uploaded Excel sheet contains no rows");
+          return;
+        }
+
+        const extractedPhones = [];
+        let detectedTemplate = "";
+
+        rows.forEach((row) => {
+          // Look for phone / contact column
+          let phoneVal = "";
+          for (const key of Object.keys(row)) {
+            const cleanKey = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+            if (
+              cleanKey.includes("phone") ||
+              cleanKey.includes("mobile") ||
+              cleanKey.includes("contact") ||
+              cleanKey.includes("number") ||
+              cleanKey.includes("whatsapp")
+            ) {
+              phoneVal = String(row[key]);
+              break;
+            }
+          }
+
+          // Fallback: search for any 10-12 digit value in row
+          if (!phoneVal) {
+            for (const key of Object.keys(row)) {
+              const str = String(row[key]).replace(/\D/g, "");
+              if (str.length >= 10 && str.length <= 13) {
+                phoneVal = str;
+                break;
+              }
+            }
+          }
+
+          const cleanPhone = phoneVal.replace(/\D/g, "").slice(-10);
+          if (cleanPhone.length === 10 && /^[6-9]\d{9}$/.test(cleanPhone)) {
+            extractedPhones.push("91" + cleanPhone);
+          }
+
+          // Look for template column
+          if (!detectedTemplate) {
+            for (const key of Object.keys(row)) {
+              const cleanKey = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+              if (cleanKey.includes("template")) {
+                const val = String(row[key]).trim();
+                if (val) {
+                  detectedTemplate = val;
+                  break;
+                }
+              }
+            }
+          }
+        });
+
+        const uniquePhones = [...new Set(extractedPhones)];
+        if (uniquePhones.length === 0) {
+          toast.error("No valid 10-digit mobile numbers found in sheet. Ensure numbers start with 6-9.");
+          return;
+        }
+
+        setForm((prev) => {
+          const next = {
+            ...prev,
+            audience: "Custom Test Batch",
+            customPhones: uniquePhones.join(", "),
+          };
+
+          if (detectedTemplate) {
+            const matched = templates.find(
+              (t) => t.name.toLowerCase() === detectedTemplate.toLowerCase()
+            );
+            if (matched) {
+              next.template = matched.name;
+            } else {
+              const customTmpl = {
+                id: "tmpl_excel_" + Date.now(),
+                name: detectedTemplate,
+                category: "MARKETING",
+                language: "en_US",
+                status: "APPROVED",
+                content: `Imported from Excel (${detectedTemplate})`,
+              };
+              setTemplates((tPrev) => [customTmpl, ...tPrev]);
+              next.template = detectedTemplate;
+            }
+          }
+
+          return next;
+        });
+
+        setExcelFileName(file.name);
+        setExcelParsedCount(uniquePhones.length);
+
+        toast.success(
+          `Imported ${uniquePhones.length} contacts from "${file.name}"${
+            detectedTemplate ? ` • Template "${detectedTemplate}" loaded` : ""
+          }`
+        );
+      } catch (err) {
+        console.error("Excel parse error:", err);
+        toast.error("Failed to parse Excel file: " + err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleDownloadSampleExcel = () => {
+    try {
+      const wb = XLSX.utils.book_new();
+      const sampleData = [
+        {
+          "Contact Number": "917289043777",
+          "Patient Name": "Rahul Kumar",
+          "Template": "mediconnect_test_message",
+          "Var1": "Rahul Kumar",
+          "Var2": "MC-889900",
+        },
+        {
+          "Contact Number": "918439993033",
+          "Patient Name": "Support Desk",
+          "Template": "navratri_post",
+          "Var1": "Support Desk",
+          "Var2": "MC-112233",
+        },
+      ];
+      const ws = XLSX.utils.json_to_sheet(sampleData);
+      XLSX.utils.book_append_sheet(wb, ws, "Contacts");
+      XLSX.writeFile(wb, "mediconnect_broadcast_sample.xlsx");
+      toast.success("Sample Excel template downloaded (.xlsx)");
+    } catch (e) {
+      toast.error("Download failed: " + e.message);
+    }
+  };
+
+  const handleExportBroadcastsToExcel = () => {
+    if (!broadcasts || broadcasts.length === 0) {
+      toast.error("No broadcast campaigns to export");
+      return;
+    }
+    try {
+      const wb = XLSX.utils.book_new();
+      const rows = broadcasts.map((b) => ({
+        "Campaign ID": b.id,
+        "Campaign Name": b.campaignName,
+        "Live Meta Template": b.template,
+        "Audience Segment": b.audience,
+        "Sent Count": b.sent || 0,
+        "Delivered Count": b.delivered || 0,
+        "Read Rate": b.sent > 0 ? `${Math.round((b.read / b.sent) * 100)}%` : "0%",
+        "Status": b.status,
+        "Scheduled / Dispatched Time": b.scheduledTime,
+        "Failure Reason": b.failureReason || "",
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(wb, ws, "Broadcast Campaigns");
+      XLSX.writeFile(wb, `mediconnect_broadcast_campaigns_${Date.now()}.xlsx`);
+      toast.success("Broadcast campaigns exported to Excel");
+    } catch (e) {
+      toast.error("Export failed: " + e.message);
+    }
+  };
 
   // Handle campaign creation and live dispatch
   const handleCreate = async (e) => {
@@ -273,6 +462,15 @@ export default function BroadcastsPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportBroadcastsToExcel}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-emerald-700 text-xs font-semibold rounded-xl shadow-xs transition cursor-pointer"
+            title="Export broadcast campaigns to Excel file"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+            Export Excel
+          </button>
+
           <button
             onClick={() => {
               loadBroadcastsFromDb();
@@ -632,27 +830,92 @@ export default function BroadcastsPage() {
                     Chronic Care Cohort (Preventive reminders)
                   </option>
                   <option value="Custom Test Batch">
-                    Custom Phone Numbers (Test instant delivery)
+                    Custom Phone Numbers / Excel Sheet Upload (.xlsx, .csv)
                   </option>
                 </select>
               </div>
 
-              {/* Custom Numbers input if selected */}
+              {/* Custom Numbers and Excel Sheet Upload */}
               {form.audience === "Custom Test Batch" && (
-                <div className="animate-in fade-in duration-150">
-                  <label className="font-semibold text-slate-700 block mb-1">
-                    Enter Target Phone Numbers (comma-separated):
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder="918439993033, 917808455740"
-                    value={form.customPhones}
-                    onChange={(e) => setForm({ ...form, customPhones: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-mono text-xs focus:outline-none focus:border-[#00629b] focus:bg-white"
-                  />
-                  <p className="text-[10px] text-slate-500 mt-1">
-                    Enter test 10-digit or international format numbers to verify live delivery.
-                  </p>
+                <div className="space-y-3 animate-in fade-in duration-150">
+                  {/* Excel Sheet Upload Section */}
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="font-semibold text-slate-800 flex items-center gap-1.5 text-xs">
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                        <span>Upload Excel / CSV Sheet</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleDownloadSampleExcel}
+                        className="text-[11px] text-[#00629b] hover:underline font-semibold flex items-center gap-1 cursor-pointer"
+                        title="Download sample spreadsheet format"
+                      >
+                        <Download className="w-3 h-3" />
+                        <span>Download Sample Excel</span>
+                      </button>
+                    </div>
+
+                    <input
+                      ref={excelInputRef}
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      onChange={handleExcelUpload}
+                      className="hidden"
+                    />
+
+                    <div
+                      onClick={() => excelInputRef.current?.click()}
+                      className="border-2 border-dashed border-slate-300 hover:border-[#00629b] bg-white p-3 rounded-xl text-center cursor-pointer transition flex flex-col items-center justify-center gap-1 group"
+                    >
+                      <Upload className="w-4 h-4 text-slate-400 group-hover:text-[#00629b] transition" />
+                      <span className="text-slate-700 font-medium text-[11px]">
+                        Click to upload or drag & drop .xlsx, .xls, or .csv
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        Auto-updates Contact Numbers & Template directly from sheet columns
+                      </span>
+                    </div>
+
+                    {excelFileName && (
+                      <div className="flex items-center justify-between p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 text-[11px]">
+                        <span className="flex items-center gap-1.5 font-semibold truncate">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                          <span>{excelFileName}</span>
+                          <span className="text-emerald-600 font-normal">({excelParsedCount} contacts loaded)</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setExcelFileName("");
+                            setExcelParsedCount(0);
+                            setForm({ ...form, customPhones: "" });
+                          }}
+                          className="text-slate-400 hover:text-slate-600 font-bold ml-2 cursor-pointer p-0.5"
+                          title="Remove uploaded sheet"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Comma-separated Phone Numbers textarea */}
+                  <div>
+                    <label className="font-semibold text-slate-700 block mb-1">
+                      Target Contact Numbers (extracted or entered):
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="917289043777, 918439993033"
+                      value={form.customPhones}
+                      onChange={(e) => setForm({ ...form, customPhones: e.target.value })}
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-mono text-xs focus:outline-none focus:border-[#00629b] focus:bg-white"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Verify 10-digit or international format numbers to receive this broadcast.
+                    </p>
+                  </div>
                 </div>
               )}
 
