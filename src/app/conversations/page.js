@@ -1100,7 +1100,25 @@ export default function ConversationsPage() {
         currentConv.patientName?.replace(/[^a-zA-Z\s]/g, "").trim() || "Support Desk";
       const referenceId = "MC-" + Math.floor(100000 + Math.random() * 900000);
 
-      const paramsToSend = isTemplate ? [recipientName, referenceId] : undefined;
+      // Determine template params dynamically matching Meta requirements
+      let paramsToSend = undefined;
+      if (isTemplate) {
+        if (templateName === "navratri_post") {
+          paramsToSend = [];
+        } else if (templateName === "mediconnect_test_message") {
+          paramsToSend = [recipientName, referenceId];
+        } else {
+          const selectedTmplObj = templates.find((t) => t.name === templateName);
+          const varCount = (selectedTmplObj?.content?.match(/\{\{\d+\}\}/g) || []).length;
+          if (varCount === 0) {
+            paramsToSend = [];
+          } else if (varCount === 1) {
+            paramsToSend = [recipientName];
+          } else {
+            paramsToSend = [recipientName, referenceId];
+          }
+        }
+      }
 
       const res = await fetch("/api/whatsapp/send", {
         method: "POST",

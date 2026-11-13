@@ -37,10 +37,37 @@ export async function POST(req) {
 
     let resolvedParams = Array.isArray(templateParams) ? [...templateParams] : [];
     if (templateName && templateName !== "custom") {
-      if (templateName === "mediconnect_test_message" && resolvedParams.length < 2) {
-        const p1 = resolvedParams[0] || body.contactName || body.patientName || "Valued Patient";
-        const p2 = resolvedParams[1] || "MC-" + Math.floor(100000 + Math.random() * 900000);
-        resolvedParams = [p1, p2];
+      let components = [];
+
+      if (templateName === "navratri_post") {
+        resolvedParams = []; // navratri_post requires 0 body parameters on Meta
+        components.push({
+          type: "header",
+          parameters: [
+            {
+              type: "image",
+              image: {
+                link: media?.url || "https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=800",
+              },
+            },
+          ],
+        });
+      } else if (templateName === "mediconnect_test_message") {
+        if (resolvedParams.length < 2) {
+          const p1 = resolvedParams[0] || body.contactName || body.patientName || "Valued Patient";
+          const p2 = resolvedParams[1] || "MC-" + Math.floor(100000 + Math.random() * 900000);
+          resolvedParams = [p1, p2];
+        }
+      }
+
+      if (resolvedParams.length > 0) {
+        components.push({
+          type: "body",
+          parameters: resolvedParams.map((p) => ({
+            type: "text",
+            text: String(p),
+          })),
+        });
       }
 
       textBody = `[Template: ${templateName}]` + (resolvedParams.length > 0 ? ` (${resolvedParams.join(", ")})` : "");
@@ -52,19 +79,7 @@ export async function POST(req) {
         template: {
           name: templateName,
           language: { code: language },
-          ...(resolvedParams.length > 0
-            ? {
-                components: [
-                  {
-                    type: "body",
-                    parameters: resolvedParams.map((p) => ({
-                      type: "text",
-                      text: String(p),
-                    })),
-                  },
-                ],
-              }
-            : {}),
+          ...(components.length > 0 ? { components } : {}),
         },
       };
     } else if (media && media.url && media.url.startsWith("http")) {

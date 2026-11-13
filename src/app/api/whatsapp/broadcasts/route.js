@@ -191,8 +191,31 @@ export async function POST(req) {
       for (const phone of targetNumbers) {
         let formatted = "91" + phone;
         let resolvedParams = [...templateParams];
-        if (template === "mediconnect_test_message" && resolvedParams.length < 2) {
+        let components = [];
+
+        if (template === "navratri_post") {
+          resolvedParams = [];
+          components.push({
+            type: "header",
+            parameters: [
+              {
+                type: "image",
+                image: { link: "https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=800" },
+              },
+            ],
+          });
+        } else if (template === "mediconnect_test_message" && resolvedParams.length < 2) {
           resolvedParams = ["Valued Patient", "MC-" + Math.floor(100000 + Math.random() * 900000)];
+        }
+
+        if (resolvedParams.length > 0) {
+          components.push({
+            type: "body",
+            parameters: resolvedParams.map((p) => ({
+              type: "text",
+              text: String(p),
+            })),
+          });
         }
 
         const payload = {
@@ -203,19 +226,7 @@ export async function POST(req) {
           template: {
             name: template,
             language: { code: "en_US" },
-            ...(resolvedParams.length > 0
-              ? {
-                  components: [
-                    {
-                      type: "body",
-                      parameters: resolvedParams.map((p) => ({
-                        type: "text",
-                        text: String(p),
-                      })),
-                    },
-                  ],
-                }
-              : {}),
+            ...(components.length > 0 ? { components } : {}),
           },
         };
 

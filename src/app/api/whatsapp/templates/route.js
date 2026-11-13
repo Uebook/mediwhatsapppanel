@@ -109,7 +109,7 @@ export async function GET() {
           status: "APPROVED",
           metaStatus: "APPROVED",
           content: "Wishing everyone a very Happy Navratri! May Maa Durga bless you with happiness, good health, success and prosperity.",
-          header: null,
+          header: "IMAGE",
           buttons: [],
           lastUpdated: "multichannel.insignsms.com (Live Approved)",
         },
