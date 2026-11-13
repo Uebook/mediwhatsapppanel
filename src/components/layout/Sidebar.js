@@ -63,27 +63,56 @@ export default function Sidebar({ open, onToggle, mobileOpen, onCloseMobile }) {
           if (!cleanDigits) continue;
           cleanPhonesSet.add(cleanDigits);
 
-          const existing = savedMap[cleanDigits] || {};
-          const hasAgentMsg = msgs.some((m) => m.sender === "agent");
-          const patientWantsHuman = msgs.some(
-            (m) =>
-              m.sender === "patient" &&
-              /(human|agent|support|doctor|help|talk|person)/i.test(m.text || "")
-          );
-
           // 1. Takeover Status calculation strictly matching takeovers/page.js
           const serverTakeover = msgData.takeoverContacts
             ? msgData.takeoverContacts[cleanDigits]
             : null;
-          let takeoverStatus = existing.takeoverStatus;
+          let takeoverStatus = "ACTIVE_AUTOMATION";
+
           if (serverTakeover !== undefined && serverTakeover !== null) {
             takeoverStatus = serverTakeover.active
               ? "HUMAN_OWNERSHIP_ACTIVE"
               : "ACTIVE_AUTOMATION";
-          } else if (!takeoverStatus) {
-            if (hasAgentMsg) takeoverStatus = "HUMAN_OWNERSHIP_ACTIVE";
-            else if (patientWantsHuman) takeoverStatus = "HUMAN_TAKEOVER_REQUESTED";
-            else takeoverStatus = "ACTIVE_AUTOMATION";
+          } else {
+            const sorted = (Array.isArray(msgs) ? [...msgs] : []).sort(
+              (a, b) => Number(a.rawTimestamp || 0) - Number(b.rawTimestamp || 0)
+            );
+            for (let i = sorted.length - 1; i >= 0; i--) {
+              const m = sorted[i];
+              const txt = (m.text || "").toLowerCase();
+              if (m.sender === "system" && (txt.includes("bot resumed") || txt.includes("released session"))) {
+                takeoverStatus = "ACTIVE_AUTOMATION";
+                break;
+              }
+              if (
+                m.sender === "system" &&
+                (txt.includes("human takeover active") ||
+                  txt.includes("claimed conversation") ||
+                  txt.includes("bot paused"))
+              ) {
+                takeoverStatus = "HUMAN_OWNERSHIP_ACTIVE";
+                break;
+              }
+              const isBroadcast =
+                txt.startsWith("[broadcast campaign") ||
+                txt.includes("[template: navratri_post]") ||
+                m.isBroadcast === true;
+              if (!isBroadcast && (m.sender === "agent" || m.sender === "human")) {
+                takeoverStatus = "HUMAN_OWNERSHIP_ACTIVE";
+                break;
+              }
+            }
+
+            if (takeoverStatus === "ACTIVE_AUTOMATION") {
+              const patientWantsHuman = sorted.some(
+                (m) =>
+                  m.sender === "patient" &&
+                  /(human|agent|support|doctor|help|talk|person)/i.test(m.text || "")
+              );
+              if (patientWantsHuman) {
+                takeoverStatus = "HUMAN_TAKEOVER_REQUESTED";
+              }
+            }
           }
 
           if (

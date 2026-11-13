@@ -103,6 +103,50 @@ async function fetchFromSupabaseTable() {
         // Ensure every conversation list is strictly sorted chronologically by rawTimestamp
         for (const [phone, list] of grouped.entries()) {
           list.sort((a, b) => (a.rawTimestamp || 0) - (b.rawTimestamp || 0));
+
+          // Accurately reconstruct serverless takeover state for each contact
+          for (let i = list.length - 1; i >= 0; i--) {
+            const m = list[i];
+            const txt = (m.text || "").toLowerCase();
+            if (m.sender === "system" && (txt.includes("bot resumed") || txt.includes("released session"))) {
+              globalThis.__wa_takeover_contacts.set(phone, {
+                active: false,
+                agentName: null,
+                updatedAt: m.rawTimestamp || Date.now(),
+              });
+              break;
+            }
+            if (
+              m.sender === "system" &&
+              (txt.includes("human takeover active") ||
+                txt.includes("claimed conversation") ||
+                txt.includes("bot paused"))
+            ) {
+              globalThis.__wa_takeover_contacts.set(phone, {
+                active: true,
+                agentName: m.agentName || "Support Desk",
+                updatedAt: m.rawTimestamp || Date.now(),
+              });
+              break;
+            }
+            const isBroadcast = txt.startsWith("[broadcast campaign") || txt.includes("[template: navratri_post]");
+            if (
+              !isBroadcast &&
+              (m.sender === "agent" ||
+                m.sender === "human" ||
+                (m.agentName &&
+                  m.agentName !== "bot" &&
+                  m.agentName !== "MediConnect Assistant" &&
+                  m.agentName !== "System"))
+            ) {
+              globalThis.__wa_takeover_contacts.set(phone, {
+                active: true,
+                agentName: m.agentName || "Support Desk",
+                updatedAt: m.rawTimestamp || Date.now(),
+              });
+              break;
+            }
+          }
         }
         globalThis.__wa_messages_store = grouped;
         return true;
@@ -437,13 +481,21 @@ export const messageStore = {
               return true;
             }
             // Agent manual dispatch within 24 hours implies active takeover unless explicitly released
+            // Note: Broadcast campaigns are automated mass dispatches and must NOT activate human takeover
+            const isBroadcast =
+              txt.startsWith("[broadcast campaign") ||
+              txt.includes("[template: navratri_post]") ||
+              row.is_broadcast === true ||
+              Boolean(row.api_response?.isBroadcast);
+
             if (
-              row.sender === "agent" ||
-              row.sender === "human" ||
-              (row.agent_name &&
-                row.agent_name !== "bot" &&
-                row.agent_name !== "MediConnect Assistant" &&
-                row.agent_name !== "System")
+              !isBroadcast &&
+              (row.sender === "agent" ||
+                row.sender === "human" ||
+                (row.agent_name &&
+                  row.agent_name !== "bot" &&
+                  row.agent_name !== "MediConnect Assistant" &&
+                  row.agent_name !== "System"))
             ) {
               const rowTs = normalizeTimestampMs(row.raw_timestamp);
               if (Date.now() - rowTs < 24 * 3600 * 1000) {

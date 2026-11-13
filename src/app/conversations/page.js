@@ -442,15 +442,47 @@ export default function ConversationsPage() {
           if (cleanDigits === "8439993033") pName = "Support Desk (+91 84399 93033)";
           if (cleanDigits === "1800227575") pName = "1800227575";
 
-          const hasAgentMsg = sortedMsgs.some((m) => m.sender === "agent");
           const serverTakeover = data.takeoverContacts ? data.takeoverContacts[cleanDigits] : null;
-          const takeover =
-            serverTakeover !== undefined && serverTakeover !== null
-              ? (serverTakeover.active ? "HUMAN_OWNERSHIP_ACTIVE" : "ACTIVE_AUTOMATION")
-              : (existing.takeoverStatus || (hasAgentMsg ? "HUMAN_OWNERSHIP_ACTIVE" : "ACTIVE_AUTOMATION"));
+          let isTakeoverActive = false;
+          let activeAgentName = null;
+
+          if (serverTakeover !== undefined && serverTakeover !== null) {
+            isTakeoverActive = Boolean(serverTakeover.active);
+            activeAgentName = serverTakeover.agentName || null;
+          } else {
+            // Strictly inspect chronological events from newest to oldest
+            for (let i = sortedMsgs.length - 1; i >= 0; i--) {
+              const m = sortedMsgs[i];
+              const txt = (m.text || "").toLowerCase();
+              if (m.sender === "system" && (txt.includes("bot resumed") || txt.includes("released session"))) {
+                isTakeoverActive = false;
+                break;
+              }
+              if (
+                m.sender === "system" &&
+                (txt.includes("human takeover active") ||
+                  txt.includes("claimed conversation") ||
+                  txt.includes("bot paused"))
+              ) {
+                isTakeoverActive = true;
+                activeAgentName = m.agentName || "Support Desk";
+                break;
+              }
+              const isBroadcast =
+                txt.startsWith("[broadcast campaign") ||
+                txt.includes("[template: navratri_post]") ||
+                m.isBroadcast === true;
+              if (!isBroadcast && (m.sender === "agent" || m.sender === "human")) {
+                isTakeoverActive = true;
+                activeAgentName = m.agentName || "Support Desk";
+                break;
+              }
+            }
+          }
+
+          const takeover = isTakeoverActive ? "HUMAN_OWNERSHIP_ACTIVE" : "ACTIVE_AUTOMATION";
           const assignedAgent =
-            serverTakeover?.agentName ||
-            existing.assignedAgent ||
+            activeAgentName ||
             (takeover === "HUMAN_OWNERSHIP_ACTIVE" ? (currentUser?.name || "Muskan Sharma") : null);
 
           // Calculate unread count based on incoming messages received
@@ -2616,30 +2648,30 @@ export default function ConversationsPage() {
                   />
                 </div>
 
-                {/* 4.5. Always-Visible Bot / Agent Active Indicator & Toggle Button (Placed right by the audio mic / send button) */}
+                {/* 4.5. Always-Visible Bot / Agent Active Indicator & Toggle Button (Placed directly beside the mic / send button) */}
                 {currentConv.takeoverStatus === "HUMAN_OWNERSHIP_ACTIVE" ? (
                   <button
                     type="button"
                     onClick={handleTakeoverToggle}
-                    className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-full flex items-center gap-1.5 text-xs font-semibold shadow-2xs hover:shadow-xs transition cursor-pointer flex-shrink-0 animate-in fade-in"
+                    className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-xs hover:shadow transition cursor-pointer flex-shrink-0 animate-in fade-in"
                     title="Human Agent Active. Click to Resume WhatsApp Bot."
                   >
                     <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
                     <UserCheck className="w-3.5 h-3.5 text-amber-700" />
-                    <span className="font-bold">Agent Active</span>
-                    <span className="text-[10px] text-amber-700 font-normal hidden sm:inline">(Activate Bot)</span>
+                    <span className="font-bold text-amber-950">Agent Active</span>
+                    <span className="text-[11px] text-amber-800 font-normal pl-1 border-l border-amber-300">Activate Bot</span>
                   </button>
                 ) : (
                   <button
                     type="button"
                     onClick={handleTakeoverToggle}
-                    className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 rounded-full flex items-center gap-1.5 text-xs font-semibold shadow-2xs hover:shadow-xs transition cursor-pointer flex-shrink-0 animate-in fade-in"
+                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-xs hover:shadow transition cursor-pointer flex-shrink-0 animate-in fade-in"
                     title="WhatsApp Bot Active. Click to Claim Human Takeover."
                   >
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                     <Bot className="w-3.5 h-3.5 text-emerald-700" />
-                    <span className="font-bold">Bot Active</span>
-                    <span className="text-[10px] text-emerald-700 font-normal hidden sm:inline">(Claim Takeover)</span>
+                    <span className="font-bold text-emerald-950">Bot Active</span>
+                    <span className="text-[11px] text-emerald-800 font-normal pl-1 border-l border-emerald-300">Takeover</span>
                   </button>
                 )}
 

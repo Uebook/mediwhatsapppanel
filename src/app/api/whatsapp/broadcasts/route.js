@@ -267,7 +267,8 @@ export async function POST(req) {
               time: new Date().toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit", hour12: true }),
               status: "delivered",
               rawTimestamp: Date.now(),
-              apiResponse: { ...data, broadcastId: newId, campaignName },
+              isBroadcast: true,
+              apiResponse: { ...data, broadcastId: newId, campaignName, isBroadcast: true },
             });
             return { ok: true, phone, id: msgId };
           } else {
