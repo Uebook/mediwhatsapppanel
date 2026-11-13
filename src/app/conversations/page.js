@@ -2616,16 +2616,30 @@ export default function ConversationsPage() {
                   />
                 </div>
 
-                {/* 4.5. Activate Bot button when Human Takeover is active (placed right by the audio mic / send button) */}
-                {currentConv.takeoverStatus === "HUMAN_OWNERSHIP_ACTIVE" && (
+                {/* 4.5. Always-Visible Bot / Agent Active Indicator & Toggle Button (Placed right by the audio mic / send button) */}
+                {currentConv.takeoverStatus === "HUMAN_OWNERSHIP_ACTIVE" ? (
                   <button
                     type="button"
                     onClick={handleTakeoverToggle}
-                    className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-full flex items-center gap-1.5 text-xs font-semibold shadow-xs hover:shadow-sm transition cursor-pointer flex-shrink-0 animate-in fade-in zoom-in-95 duration-150"
-                    title="Activate WhatsApp Bot (Resume Automated Bot Replies)"
+                    className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-full flex items-center gap-1.5 text-xs font-semibold shadow-2xs hover:shadow-xs transition cursor-pointer flex-shrink-0 animate-in fade-in"
+                    title="Human Agent Active. Click to Resume WhatsApp Bot."
                   >
-                    <Bot className="w-4 h-4" />
-                    <span>Activate Bot</span>
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                    <UserCheck className="w-3.5 h-3.5 text-amber-700" />
+                    <span className="font-bold">Agent Active</span>
+                    <span className="text-[10px] text-amber-700 font-normal hidden sm:inline">(Activate Bot)</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleTakeoverToggle}
+                    className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 rounded-full flex items-center gap-1.5 text-xs font-semibold shadow-2xs hover:shadow-xs transition cursor-pointer flex-shrink-0 animate-in fade-in"
+                    title="WhatsApp Bot Active. Click to Claim Human Takeover."
+                  >
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <Bot className="w-3.5 h-3.5 text-emerald-700" />
+                    <span className="font-bold">Bot Active</span>
+                    <span className="text-[10px] text-emerald-700 font-normal hidden sm:inline">(Claim Takeover)</span>
                   </button>
                 )}
 
