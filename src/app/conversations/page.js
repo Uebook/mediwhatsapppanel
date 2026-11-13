@@ -34,6 +34,8 @@ import {
   ShieldCheck,
   Ban,
   Flag,
+  Pin,
+  PinOff,
   Phone,
   Globe,
   ExternalLink,
@@ -292,6 +294,17 @@ export default function ConversationsPage() {
   // More Options Menu & Contact Info State
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showContactInfo, setShowContactInfo] = useState(false);
+
+  // Pinned Chats Tracking
+  const [pinnedChats, setPinnedChats] = useState(() => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const saved = localStorage.getItem("mediconnect_wa_pinned_chats");
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch (e) {
+      return new Set();
+    }
+  });
 
   // Report Contact Modal State
   const [showReportModal, setShowReportModal] = useState(false);
@@ -609,22 +622,30 @@ export default function ConversationsPage() {
     markAsRead(id);
   };
 
-  // Filter conversations matching search and "all" | "unread" | "read" tabs
-  const filteredConversations = conversations.filter((c) => {
-    const matchesSearch =
-      c.patientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.mobile.includes(searchQuery);
+  // Filter conversations matching search and "all" | "unread" | "read" tabs, prioritizing pinned chats
+  const filteredConversations = conversations
+    .filter((c) => {
+      const matchesSearch =
+        c.patientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.mobile.includes(searchQuery);
 
-    if (!matchesSearch) return false;
+      if (!matchesSearch) return false;
 
-    if (filter === "unread") {
-      return c.unreadCount > 0 || c.isUnread;
-    }
-    if (filter === "read") {
-      return !c.isUnread && (!c.unreadCount || c.unreadCount === 0);
-    }
-    return true;
-  });
+      if (filter === "unread") {
+        return c.unreadCount > 0 || c.isUnread;
+      }
+      if (filter === "read") {
+        return !c.isUnread && (!c.unreadCount || c.unreadCount === 0);
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const isPinnedA = pinnedChats.has(a.id);
+      const isPinnedB = pinnedChats.has(b.id);
+      if (isPinnedA && !isPinnedB) return -1;
+      if (!isPinnedA && isPinnedB) return 1;
+      return 0;
+    });
 
   const unreadTotalCount = conversations.filter((c) => c.unreadCount > 0 || c.isUnread).length;
 
@@ -975,6 +996,27 @@ export default function ConversationsPage() {
     } finally {
       setIsSubmittingReport(false);
     }
+  };
+
+  const handleTogglePinChat = (chatId) => {
+    const id = chatId || currentConv?.id;
+    if (!id) return;
+    setPinnedChats((prev) => {
+      const next = new Set(prev);
+      const isPinned = next.has(id);
+      if (isPinned) {
+        next.delete(id);
+        toast.success("Chat unpinned");
+      } else {
+        next.add(id);
+        toast.success("Chat pinned to top");
+      }
+      try {
+        localStorage.setItem("mediconnect_wa_pinned_chats", JSON.stringify(Array.from(next)));
+      } catch (e) {}
+      return next;
+    });
+    setShowMoreMenu(false);
   };
 
   const handleSendMessage = async (e) => {
@@ -1376,9 +1418,14 @@ export default function ConversationsPage() {
                               </span>
                             )}
                           </div>
-                          <span className={`text-[11px] whitespace-nowrap ${hasUnread ? "text-[#00a884] font-semibold" : "text-[#667781]"}`}>
-                            {c.lastActivity}
-                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {pinnedChats.has(c.id) && (
+                              <Pin className="w-3 h-3 text-slate-400 rotate-45 shrink-0" title="Pinned" />
+                            )}
+                            <span className={`text-[11px] whitespace-nowrap ${hasUnread ? "text-[#00a884] font-semibold" : "text-[#667781]"}`}>
+                              {c.lastActivity}
+                            </span>
+                          </div>
                         </div>
 
                         <div className="flex items-center justify-between gap-2 mt-0.5">
@@ -1433,6 +1480,12 @@ export default function ConversationsPage() {
                 <div>
                   <h3 className="text-sm font-bold text-[#111b21] flex items-center gap-2">
                     {currentConv.patientName}
+                    {pinnedChats.has(currentConv.id) && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-medium border border-slate-200" title="Pinned Chat">
+                        <Pin className="w-3 h-3 text-slate-500 rotate-45" />
+                        <span>Pinned</span>
+                      </span>
+                    )}
                     {currentConv.isBlocked && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold border border-rose-300">
                         <Ban className="w-3 h-3 text-rose-600" />
@@ -1542,28 +1595,25 @@ export default function ConversationsPage() {
                     <div className="absolute right-0 top-8 bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 w-52 z-40 text-xs text-slate-700">
                       <button
                         type="button"
-                        onClick={() => markAsUnread(currentConv.id)}
+                        onClick={() => handleTogglePinChat(currentConv.id)}
                         className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
                       >
-                        <MessageSquare className="w-3.5 h-3.5 text-[#00a884]" />
-                        <span>Mark as Unread</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          markAsRead(currentConv.id);
-                          setShowMoreMenu(false);
-                          toast.success("Marked as Read");
-                        }}
-                        className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
-                      >
-                        <CheckCheck className="w-3.5 h-3.5 text-[#00a884]" />
-                        <span>Mark as Read</span>
+                        {pinnedChats.has(currentConv.id) ? (
+                          <>
+                            <PinOff className="w-3.5 h-3.5 text-amber-600" />
+                            <span className="font-medium">Unpin Chat</span>
+                          </>
+                        ) : (
+                          <>
+                            <Pin className="w-3.5 h-3.5 text-[#00a884] rotate-45" />
+                            <span className="font-medium">Pin Chat</span>
+                          </>
+                        )}
                       </button>
                       <button
                         type="button"
                         onClick={handleExportChat}
-                        className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                        className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2 cursor-pointer border-t border-slate-100"
                       >
                         <Download className="w-3.5 h-3.5 text-[#00629b]" />
                         <span>Export Chat Transcript</span>
@@ -2586,6 +2636,27 @@ export default function ConversationsPage() {
                 </span>
               </div>
               <div className="pt-2 border-t border-slate-200/70 space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleTogglePinChat(currentConv.id)}
+                  className={`w-full py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 border transition cursor-pointer ${
+                    pinnedChats.has(currentConv.id)
+                      ? "bg-slate-100 text-slate-800 border-slate-300 hover:bg-slate-200"
+                      : "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
+                  }`}
+                >
+                  {pinnedChats.has(currentConv.id) ? (
+                    <>
+                      <PinOff className="w-3.5 h-3.5 text-slate-600" />
+                      <span>Unpin Chat</span>
+                    </>
+                  ) : (
+                    <>
+                      <Pin className="w-3.5 h-3.5 text-emerald-600 rotate-45" />
+                      <span>Pin Chat to Top</span>
+                    </>
+                  )}
+                </button>
                 <button
                   type="button"
                   onClick={handleToggleBlockContact}
