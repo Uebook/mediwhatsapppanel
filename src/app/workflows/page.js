@@ -47,7 +47,76 @@ export default function WorkflowsPage() {
           if (cleanDigits === "8439993033") pName = "Support Desk (+91 84399 93033)";
 
           const hasAgentMsg = msgs.some((m) => m.sender === "agent");
-          const takeover = existing.takeoverStatus || (hasAgentMsg ? "HUMAN_OWNERSHIP_ACTIVE" : "ACTIVE_AUTOMATION");
+          const serverTakeover = data.takeoverContacts ? data.takeoverContacts[cleanDigits] : null;
+          let takeover = "ACTIVE_AUTOMATION";
+          let assignedAgent = null;
+
+          if (serverTakeover !== undefined && serverTakeover !== null) {
+            takeover = serverTakeover.active ? "HUMAN_OWNERSHIP_ACTIVE" : "ACTIVE_AUTOMATION";
+            assignedAgent = serverTakeover.agentName || null;
+          } else {
+            const sorted = (Array.isArray(msgs) ? [...msgs] : []).sort(
+              (a, b) => Number(a.rawTimestamp || 0) - Number(b.rawTimestamp || 0)
+            );
+            for (let i = sorted.length - 1; i >= 0; i--) {
+              const m = sorted[i];
+              const txt = (m.text || "").toLowerCase();
+              if (m.sender === "system" && (txt.includes("bot resumed") || txt.includes("released session"))) {
+                takeover = "ACTIVE_AUTOMATION";
+                break;
+              }
+              if (
+                m.sender === "system" &&
+                (txt.includes("human takeover active") ||
+                  txt.includes("claimed conversation") ||
+                  txt.includes("bot paused"))
+              ) {
+                takeover = "HUMAN_OWNERSHIP_ACTIVE";
+                assignedAgent = m.agentName || "Support Desk";
+                break;
+              }
+              const isBroadcast =
+                txt.startsWith("[broadcast campaign") ||
+                txt.includes("[template: navratri_post]") ||
+                m.isBroadcast === true;
+              if (!isBroadcast && (m.sender === "agent" || m.sender === "human")) {
+                takeover = "HUMAN_OWNERSHIP_ACTIVE";
+                assignedAgent = m.agentName || "Support Desk";
+                break;
+              }
+            }
+          }
+
+          // Dynamic Service Domain Detection
+          const allText = (Array.isArray(msgs) ? msgs : []).map((m) => (m.text || "").toLowerCase()).join(" ");
+          let serviceDomain = "Doctor Consultation";
+          if (/(lab|test|diagnostic|blood test|ecg|scan|sample collection|pathology|cholesterol|sugar|hba1c)/i.test(allText)) {
+            serviceDomain = "Laboratory & Diagnostics";
+          } else if (/(pharmacy|medicine|prescription|tablet|drug|dosage|medication|capsule|syrup)/i.test(allText)) {
+            serviceDomain = "Pharmacy & Medicines";
+          } else if (/(nursing|nurse|attendant|elderly care|home care|wound dressing|injection)/i.test(allText)) {
+            serviceDomain = "Home Healthcare & Nursing";
+          } else if (/(support|ticket|records|locker|helpdesk|feedback|refund)/i.test(allText)) {
+            serviceDomain = "Support & Records";
+          } else if (/(doctor|consult|telemedicine|video consult|physician|dr\.|specialist|cardiolog|dermatolog|pediatric|orthoped|gynecolog|ent|dentist|appointment)/i.test(allText)) {
+            serviceDomain = "Doctor Consultation";
+          }
+
+          // Dynamic Backend Workflow State Detection
+          const lastMsgObj = msgs && msgs.length > 0 ? msgs[msgs.length - 1] : null;
+          const lastText = (lastMsgObj?.text || "").toLowerCase();
+          let workflowState = "ACTIVE";
+          if (/(receipt|appointment confirmed|booking confirmed|consultation completed|thank you for choosing mediconnect|call ended|mc-)/i.test(allText)) {
+            workflowState = "COMPLETED";
+          } else if (/(payment link|pay online|razorpay|upi id|pending payment|fee: ₹|consultation fee:)/i.test(lastText)) {
+            workflowState = "WAITING_PAYMENT";
+          } else if (
+            takeover === "HUMAN_TAKEOVER_REQUESTED" ||
+            takeover === "HUMAN_OWNERSHIP_ACTIVE" ||
+            /(waiting for doctor|connecting to doctor|assigned to|please wait while we connect|doctor is ready|telemedicine link)/i.test(allText)
+          ) {
+            workflowState = "WAITING_PROVIDER";
+          }
 
           liveList.push({
             id: "conv-" + cleanDigits,
@@ -56,10 +125,10 @@ export default function WorkflowsPage() {
             patientId: existing.patientId || `PT-${cleanDigits.slice(-5)}`,
             careEpisodeId: existing.careEpisodeId || `CE-${cleanDigits.slice(-5)}`,
             workflowId: existing.workflowId || `WF-${cleanDigits.slice(-4)}`,
-            serviceType: existing.serviceType || "Meta WhatsApp Cloud API Desk",
-            workflowState: existing.workflowState || "ACTIVE",
+            serviceType: serviceDomain,
+            workflowState: workflowState,
             takeoverStatus: takeover,
-            assignedAgent: existing.assignedAgent || (takeover === "HUMAN_OWNERSHIP_ACTIVE" ? "Support Desk" : null),
+            assignedAgent: assignedAgent || existing.assignedAgent || (takeover === "HUMAN_OWNERSHIP_ACTIVE" ? "Support Desk" : null),
             lastMessage: lastMsg ? lastMsg.text : "Active Thread",
             lastActivity: lastMsg ? lastMsg.time : "Recently",
           });
@@ -87,8 +156,14 @@ export default function WorkflowsPage() {
       (c.careEpisodeId && c.careEpisodeId.toLowerCase().includes(search.toLowerCase())) ||
       (c.workflowId && c.workflowId.toLowerCase().includes(search.toLowerCase()));
 
-    const matchService = serviceFilter === "ALL" || (c.serviceType || "").includes(serviceFilter);
-    const matchState = stateFilter === "ALL" || (c.workflowState || "ACTIVE") === stateFilter;
+    const matchService =
+      serviceFilter === "ALL" ||
+      c.serviceType === serviceFilter ||
+      (c.serviceType || "").toLowerCase().includes(serviceFilter.toLowerCase());
+
+    const matchState =
+      stateFilter === "ALL" ||
+      (c.workflowState || "ACTIVE") === stateFilter;
 
     return matchSearch && matchService && matchState;
   });
@@ -133,19 +208,20 @@ export default function WorkflowsPage() {
           <select
             value={serviceFilter}
             onChange={(e) => setServiceFilter(e.target.value)}
-            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-[#00629b]"
+            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-[#00629b] font-medium cursor-pointer"
           >
             <option value="ALL">All Services</option>
-            <option value="Meta WhatsApp">Live WhatsApp Desk</option>
-            <option value="SP-01">SP-01: Consultation</option>
-            <option value="SP-02">SP-02: Pharmacy</option>
-            <option value="SP-03">SP-03: Laboratory</option>
+            <option value="Doctor Consultation">Doctor Consultation</option>
+            <option value="Laboratory & Diagnostics">Laboratory & Diagnostics</option>
+            <option value="Pharmacy & Medicines">Pharmacy & Medicines</option>
+            <option value="Home Healthcare & Nursing">Home Healthcare & Nursing</option>
+            <option value="Support & Records">Support & Records</option>
           </select>
 
           <select
             value={stateFilter}
             onChange={(e) => setStateFilter(e.target.value)}
-            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-[#00629b]"
+            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-[#00629b] font-medium cursor-pointer"
           >
             <option value="ALL">All States</option>
             <option value="ACTIVE">ACTIVE</option>
@@ -192,7 +268,22 @@ export default function WorkflowsPage() {
                       <div className="text-[10px] text-slate-400 font-mono">{row.mobile}</div>
                     </td>
                     <td className="py-3.5 px-4">
-                      <div className="text-slate-700 font-medium">{row.serviceType || "Live WhatsApp Gateway"}</div>
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-800">
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            row.serviceType === "Doctor Consultation"
+                              ? "bg-blue-500"
+                              : row.serviceType === "Laboratory & Diagnostics"
+                              ? "bg-purple-500"
+                              : row.serviceType === "Pharmacy & Medicines"
+                              ? "bg-emerald-500"
+                              : row.serviceType === "Home Healthcare & Nursing"
+                              ? "bg-rose-500"
+                              : "bg-amber-500"
+                          }`}
+                        />
+                        {row.serviceType || "Doctor Consultation"}
+                      </span>
                     </td>
                     <td className="py-3.5 px-4">
                       <span className="font-mono text-[#00629b] bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
@@ -204,12 +295,16 @@ export default function WorkflowsPage() {
                     </td>
                     <td className="py-3.5 px-4">
                       <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
                           row.workflowState === "ACTIVE"
-                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                             : row.workflowState === "WAITING_PROVIDER"
-                            ? "bg-amber-50 text-amber-700 border border-amber-200"
-                            : "bg-slate-100 text-slate-700"
+                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                            : row.workflowState === "WAITING_PAYMENT"
+                            ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                            : row.workflowState === "COMPLETED"
+                            ? "bg-blue-50 text-blue-700 border-blue-200"
+                            : "bg-slate-100 text-slate-700 border-slate-200"
                         }`}
                       >
                         {row.workflowState || "ACTIVE"}
