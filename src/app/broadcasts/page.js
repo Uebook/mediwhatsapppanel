@@ -737,9 +737,15 @@ export default function BroadcastsPage() {
 
       {/* Modal: Create Live Broadcast */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 max-w-lg w-full space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isSubmitting) setShowModal(false);
+          }}
+          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 md:p-6 overflow-y-auto animate-in fade-in duration-150"
+        >
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-lg w-full shadow-2xl flex flex-col max-h-[92vh] my-auto overflow-hidden animate-in zoom-in-95 duration-150">
+            {/* Modal Header (Sticky) */}
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 bg-white flex-shrink-0">
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-[#00629b]" />
@@ -750,200 +756,204 @@ export default function BroadcastsPage() {
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setShowModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreate} className="space-y-4 text-xs">
-              {/* Campaign Title */}
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">
-                  Campaign Title <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Free Oral Health Checkup Drive"
-                  value={form.campaignName}
-                  onChange={(e) => setForm({ ...form, campaignName: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-medium focus:outline-none focus:border-[#00629b] focus:bg-white transition"
-                  required
-                />
-              </div>
+            {/* Scrollable Form Body */}
+            <form onSubmit={handleCreate} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-5 space-y-4 text-xs overflow-y-auto flex-1 overscroll-contain">
+                {/* Campaign Title */}
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    Campaign Title <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Free Oral Health Checkup Drive"
+                    value={form.campaignName}
+                    onChange={(e) => setForm({ ...form, campaignName: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-medium focus:outline-none focus:border-[#00629b] focus:bg-white transition"
+                    required
+                  />
+                </div>
 
-              {/* Template Selection */}
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">
-                  Live Approved Meta Template <span className="text-rose-500">*</span>
-                </label>
-                {loadingTemplates ? (
-                  <div className="flex items-center gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-500">
-                    <Loader2 className="w-4 h-4 animate-spin text-[#00629b]" />
-                    <span>Loading Meta templates...</span>
-                  </div>
-                ) : (
+                {/* Template Selection */}
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    Live Approved Meta Template <span className="text-rose-500">*</span>
+                  </label>
+                  {loadingTemplates ? (
+                    <div className="flex items-center gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-500">
+                      <Loader2 className="w-4 h-4 animate-spin text-[#00629b]" />
+                      <span>Loading Meta templates...</span>
+                    </div>
+                  ) : (
+                    <select
+                      value={form.template}
+                      onChange={(e) => setForm({ ...form, template: e.target.value })}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-medium focus:outline-none focus:border-[#00629b] focus:bg-white cursor-pointer"
+                    >
+                      {templates.map((t) => (
+                        <option key={t.id || t.name} value={t.name}>
+                          {t.name} ({t.category || "UTILITY"} - {t.status || "APPROVED"})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {/* Template Content Preview Box */}
+                  {activeTemplateObj && (
+                    <div className="mt-2 p-3 bg-slate-50 rounded-xl border border-slate-200/90 text-slate-700 space-y-1">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">
+                        Template Message Preview:
+                      </span>
+                      <p className="text-[11px] leading-relaxed text-slate-800 italic font-mono bg-white p-2 rounded-lg border border-slate-200">
+                        "{activeTemplateObj.content || activeTemplateObj.name}"
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Audience Segment Selection */}
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    Target Audience Segment
+                  </label>
                   <select
-                    value={form.template}
-                    onChange={(e) => setForm({ ...form, template: e.target.value })}
+                    value={form.audience}
+                    onChange={(e) => setForm({ ...form, audience: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-medium focus:outline-none focus:border-[#00629b] focus:bg-white cursor-pointer"
                   >
-                    {templates.map((t) => (
-                      <option key={t.id || t.name} value={t.name}>
-                        {t.name} ({t.category || "UTILITY"} - {t.status || "APPROVED"})
-                      </option>
-                    ))}
+                    <option value="All Active Patients">
+                      All Active Patients ({totalActiveAudience} verified contacts in DB)
+                    </option>
+                    <option value="Consultation Follow-ups">
+                      Consultation Follow-ups (Recent booked patients)
+                    </option>
+                    <option value="Chronic Care Cohort">
+                      Chronic Care Cohort (Preventive reminders)
+                    </option>
+                    <option value="Custom Test Batch">
+                      Custom Phone Numbers / Excel Sheet Upload (.xlsx, .csv)
+                    </option>
                   </select>
-                )}
+                </div>
 
-                {/* Template Content Preview Box */}
-                {activeTemplateObj && (
-                  <div className="mt-2 p-3 bg-slate-50 rounded-xl border border-slate-200/90 text-slate-700 space-y-1">
-                    <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">
-                      Template Message Preview:
-                    </span>
-                    <p className="text-[11px] leading-relaxed text-slate-800 italic font-mono bg-white p-2 rounded-lg border border-slate-200">
-                      "{activeTemplateObj.content || activeTemplateObj.name}"
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Audience Segment Selection */}
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">
-                  Target Audience Segment
-                </label>
-                <select
-                  value={form.audience}
-                  onChange={(e) => setForm({ ...form, audience: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-medium focus:outline-none focus:border-[#00629b] focus:bg-white cursor-pointer"
-                >
-                  <option value="All Active Patients">
-                    All Active Patients ({totalActiveAudience} verified contacts in DB)
-                  </option>
-                  <option value="Consultation Follow-ups">
-                    Consultation Follow-ups (Recent booked patients)
-                  </option>
-                  <option value="Chronic Care Cohort">
-                    Chronic Care Cohort (Preventive reminders)
-                  </option>
-                  <option value="Custom Test Batch">
-                    Custom Phone Numbers / Excel Sheet Upload (.xlsx, .csv)
-                  </option>
-                </select>
-              </div>
-
-              {/* Custom Numbers and Excel Sheet Upload */}
-              {form.audience === "Custom Test Batch" && (
-                <div className="space-y-3 animate-in fade-in duration-150">
-                  {/* Excel Sheet Upload Section */}
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="font-semibold text-slate-800 flex items-center gap-1.5 text-xs">
-                        <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                        <span>Upload Excel / CSV Sheet</span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={handleDownloadSampleExcel}
-                        className="text-[11px] text-[#00629b] hover:underline font-semibold flex items-center gap-1 cursor-pointer"
-                        title="Download sample spreadsheet format"
-                      >
-                        <Download className="w-3 h-3" />
-                        <span>Download Sample Excel</span>
-                      </button>
-                    </div>
-
-                    <input
-                      ref={excelInputRef}
-                      type="file"
-                      accept=".xlsx,.xls,.csv"
-                      onChange={handleExcelUpload}
-                      className="hidden"
-                    />
-
-                    <div
-                      onClick={() => excelInputRef.current?.click()}
-                      className="border-2 border-dashed border-slate-300 hover:border-[#00629b] bg-white p-3 rounded-xl text-center cursor-pointer transition flex flex-col items-center justify-center gap-1 group"
-                    >
-                      <Upload className="w-4 h-4 text-slate-400 group-hover:text-[#00629b] transition" />
-                      <span className="text-slate-700 font-medium text-[11px]">
-                        Click to upload or drag & drop .xlsx, .xls, or .csv
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        Auto-updates Contact Numbers & Template directly from sheet columns
-                      </span>
-                    </div>
-
-                    {excelFileName && (
-                      <div className="flex items-center justify-between p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 text-[11px]">
-                        <span className="flex items-center gap-1.5 font-semibold truncate">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                          <span>{excelFileName}</span>
-                          <span className="text-emerald-600 font-normal">({excelParsedCount} contacts loaded)</span>
-                        </span>
+                {/* Custom Numbers and Excel Sheet Upload */}
+                {form.audience === "Custom Test Batch" && (
+                  <div className="space-y-3 animate-in fade-in duration-150">
+                    {/* Excel Sheet Upload Section */}
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="font-semibold text-slate-800 flex items-center gap-1.5 text-xs">
+                          <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                          <span>Upload Excel / CSV Sheet</span>
+                        </label>
                         <button
                           type="button"
-                          onClick={() => {
-                            setExcelFileName("");
-                            setExcelParsedCount(0);
-                            setForm({ ...form, customPhones: "" });
-                          }}
-                          className="text-slate-400 hover:text-slate-600 font-bold ml-2 cursor-pointer p-0.5"
-                          title="Remove uploaded sheet"
+                          onClick={handleDownloadSampleExcel}
+                          className="text-[11px] text-[#00629b] hover:underline font-semibold flex items-center gap-1 cursor-pointer"
+                          title="Download sample spreadsheet format"
                         >
-                          <X className="w-3.5 h-3.5" />
+                          <Download className="w-3 h-3" />
+                          <span>Download Sample Excel</span>
                         </button>
                       </div>
-                    )}
-                  </div>
 
-                  {/* Comma-separated Phone Numbers textarea */}
-                  <div>
-                    <label className="font-semibold text-slate-700 block mb-1">
-                      Target Contact Numbers (extracted or entered):
-                    </label>
-                    <textarea
-                      rows={2}
-                      placeholder="917289043777, 918439993033"
-                      value={form.customPhones}
-                      onChange={(e) => setForm({ ...form, customPhones: e.target.value })}
-                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-mono text-xs focus:outline-none focus:border-[#00629b] focus:bg-white"
+                      <input
+                        ref={excelInputRef}
+                        type="file"
+                        accept=".xlsx,.xls,.csv"
+                        onChange={handleExcelUpload}
+                        className="hidden"
+                      />
+
+                      <div
+                        onClick={() => excelInputRef.current?.click()}
+                        className="border-2 border-dashed border-slate-300 hover:border-[#00629b] bg-white p-3 rounded-xl text-center cursor-pointer transition flex flex-col items-center justify-center gap-1 group"
+                      >
+                        <Upload className="w-4 h-4 text-slate-400 group-hover:text-[#00629b] transition" />
+                        <span className="text-slate-700 font-medium text-[11px]">
+                          Click to upload or drag & drop .xlsx, .xls, or .csv
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          Auto-updates Contact Numbers & Template directly from sheet columns
+                        </span>
+                      </div>
+
+                      {excelFileName && (
+                        <div className="flex items-center justify-between p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 text-[11px]">
+                          <span className="flex items-center gap-1.5 font-semibold truncate">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                            <span>{excelFileName}</span>
+                            <span className="text-emerald-600 font-normal">({excelParsedCount} contacts loaded)</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setExcelFileName("");
+                              setExcelParsedCount(0);
+                              setForm({ ...form, customPhones: "" });
+                            }}
+                            className="text-slate-400 hover:text-slate-600 font-bold ml-2 cursor-pointer p-0.5"
+                            title="Remove uploaded sheet"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Comma-separated Phone Numbers textarea */}
+                    <div>
+                      <label className="font-semibold text-slate-700 block mb-1">
+                        Target Contact Numbers (extracted or entered):
+                      </label>
+                      <textarea
+                        rows={2}
+                        placeholder="917289043777, 918439993033"
+                        value={form.customPhones}
+                        onChange={(e) => setForm({ ...form, customPhones: e.target.value })}
+                        className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-mono text-xs focus:outline-none focus:border-[#00629b] focus:bg-white"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Verify 10-digit or international format numbers to receive this broadcast.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Dispatch Timing Toggle */}
+                <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-xl space-y-1.5">
+                  <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
+                    <input
+                      type="checkbox"
+                      checked={form.sendImmediately}
+                      onChange={(e) => setForm({ ...form, sendImmediately: e.target.checked })}
+                      className="rounded text-[#00629b] focus:ring-0 cursor-pointer w-4 h-4"
                     />
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      Verify 10-digit or international format numbers to receive this broadcast.
-                    </p>
-                  </div>
+                    <span>Dispatch Immediately via Live Meta WhatsApp Cloud API</span>
+                  </label>
+                  <p className="text-[10px] text-slate-600 pl-6">
+                    {form.sendImmediately
+                      ? "Messages will be dispatched in real-time through the Insign/Meta WhatsApp gateway and tracked in database."
+                      : "Campaign will be stored in database with QUEUED status to be triggered on demand."}
+                  </p>
                 </div>
-              )}
-
-              {/* Dispatch Timing Toggle */}
-              <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-xl space-y-1.5">
-                <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
-                  <input
-                    type="checkbox"
-                    checked={form.sendImmediately}
-                    onChange={(e) => setForm({ ...form, sendImmediately: e.target.checked })}
-                    className="rounded text-[#00629b] focus:ring-0 cursor-pointer w-4 h-4"
-                  />
-                  <span>Dispatch Immediately via Live Meta WhatsApp Cloud API</span>
-                </label>
-                <p className="text-[10px] text-slate-600 pl-6">
-                  {form.sendImmediately
-                    ? "Messages will be dispatched in real-time through the Insign/Meta WhatsApp gateway and tracked in database."
-                    : "Campaign will be stored in database with QUEUED status to be triggered on demand."}
-                </p>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              {/* Action Buttons (Sticky Footer) */}
+              <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-slate-100 bg-slate-50/80 flex-shrink-0">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
                   disabled={isSubmitting}
-                  className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                  className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl transition cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -972,9 +982,15 @@ export default function BroadcastsPage() {
 
       {/* Campaign Details Drawer / Modal */}
       {selectedCampaign && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 max-w-md w-full space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelectedCampaign(null);
+          }}
+          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in"
+        >
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl flex flex-col max-h-[92vh] my-auto overflow-hidden animate-in zoom-in-95 duration-150">
+            {/* Header (Sticky) */}
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 flex-shrink-0">
               <div>
                 <span className="text-[10px] font-mono text-slate-400 font-bold uppercase">
                   {selectedCampaign.id}
@@ -984,14 +1000,16 @@ export default function BroadcastsPage() {
                 </h3>
               </div>
               <button
+                type="button"
                 onClick={() => setSelectedCampaign(null)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
+            {/* Body (Scrollable) */}
+            <div className="p-5 space-y-3 text-xs overflow-y-auto flex-1 overscroll-contain">
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
                 <span className="text-[10px] font-bold text-slate-500 uppercase">Live Template</span>
                 <p className="font-mono text-[#00629b] font-semibold">{selectedCampaign.template}</p>
@@ -1041,23 +1059,24 @@ export default function BroadcastsPage() {
                   <p className="font-mono">{selectedCampaign.failureReason}</p>
                 </div>
               )}
+            </div>
 
-              <div className="pt-2 flex justify-between items-center border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => handleDelete(selectedCampaign.id)}
-                  className="text-xs text-rose-600 hover:text-rose-800 font-semibold flex items-center gap-1 cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" /> Delete from DB
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedCampaign(null)}
-                  className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold cursor-pointer"
-                >
-                  Close
-                </button>
-              </div>
+            {/* Footer (Sticky) */}
+            <div className="px-5 py-3 border-t border-slate-100 bg-slate-50/80 flex justify-between items-center flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => handleDelete(selectedCampaign.id)}
+                className="text-xs text-rose-600 hover:text-rose-800 font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Delete from DB
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedCampaign(null)}
+                className="px-4 py-1.5 bg-slate-200/80 hover:bg-slate-300 text-slate-700 rounded-xl font-semibold cursor-pointer"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
