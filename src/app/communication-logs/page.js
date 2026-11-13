@@ -9,6 +9,8 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  RotateCcw,
+  Send,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -17,6 +19,7 @@ export default function CommunicationLogsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("ALL");
   const [search, setSearch] = useState("");
+  const [retryingId, setRetryingId] = useState(null);
 
   const getNormalizedTime = (item) => {
     if (item.rawTimestamp) {
@@ -56,12 +59,15 @@ export default function CommunicationLogsPage() {
                 id: m.id,
                 messageId: m.wamid || m.id,
                 to: "+91 " + phone,
+                phone: phone,
                 patientName: "User (" + phone.slice(-4) + ")",
-                template: m.text?.slice(0, 40) || "Text Message",
+                template: m.text?.slice(0, 45) || "Text Message",
+                fullText: m.text || "",
                 channel: "InsignSMS MultiChannel",
                 rawTimestamp: m.rawTimestamp,
                 timestamp: m.time || "Recently",
                 status: m.status === "failed" ? "FAILED" : "DELIVERED",
+                media: m.media || m.apiResponse?.media || null,
               });
             });
           }
@@ -81,6 +87,78 @@ export default function CommunicationLogsPage() {
   useEffect(() => {
     fetchLogs();
   }, []);
+
+  const handleSendAgain = async (item) => {
+    const cleanPhone = String(item.phone || item.to || "").replace(/\D/g, "").slice(-10);
+    if (!cleanPhone || cleanPhone.length < 10) {
+      toast.error("Invalid phone number for re-dispatch");
+      return;
+    }
+
+    const actionKey = item.id || item.messageId || cleanPhone;
+    setRetryingId(actionKey);
+
+    try {
+      const rawText = item.fullText || item.text || item.template || "";
+      let templateName = null;
+      let templateParams = [];
+      let messageText = rawText;
+
+      // Extract template name & params if this was a template dispatch
+      const templateMatch = rawText.match(/\[Template:\s*([a-zA-Z0-9_-]+)\](?:\s*\(([^)]+)\))?/i);
+      if (templateMatch) {
+        templateName = templateMatch[1];
+        if (templateMatch[2]) {
+          templateParams = templateMatch[2].split(",").map((s) => s.trim());
+        }
+        messageText = null;
+      }
+
+      const payload = {
+        to: cleanPhone,
+        message: messageText,
+        templateName: templateName,
+        templateParams: templateParams,
+        media: item.media || undefined,
+        agentName: "Support Desk",
+      };
+
+      const res = await fetch("/api/whatsapp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Message successfully re-sent to +91 ${cleanPhone}!`);
+        // Mark as DELIVERED in table
+        setLogs((prev) =>
+          prev.map((l) =>
+            l.id === item.id || l.messageId === item.messageId
+              ? { ...l, status: "DELIVERED", timestamp: "Just now" }
+              : l
+          )
+        );
+
+        // Mark recovered in backend message store
+        if (item.id || item.messageId) {
+          fetch("/api/whatsapp/messages", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "recover_workflow", id: item.id || item.messageId }),
+          }).catch(() => {});
+        }
+      } else {
+        const errMsg = data.error || data.message || "Failed to dispatch via WhatsApp Gateway";
+        toast.error(`Re-send Failed: ${errMsg}`, { duration: 5000 });
+      }
+    } catch (err) {
+      toast.error(`Error: ${err.message}`);
+    } finally {
+      setRetryingId(null);
+    }
+  };
 
   const filtered = logs.filter((l) => {
     const matchSearch =
@@ -176,7 +254,8 @@ export default function CommunicationLogsPage() {
                   <th className="py-3 px-4">Message / Template</th>
                   <th className="py-3 px-4">Channel</th>
                   <th className="py-3 px-4">Timestamp</th>
-                  <th className="py-3 px-4 text-right">Status</th>
+                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -185,7 +264,7 @@ export default function CommunicationLogsPage() {
                     <td className="py-4 px-4 font-mono font-semibold text-slate-900">
                       {l.to || l.phone}
                     </td>
-                    <td className="py-4 px-4 text-slate-700 max-w-xs truncate">
+                    <td className="py-4 px-4 text-slate-700 max-w-xs truncate" title={l.fullText || l.template}>
                       {l.template || l.type || "Transactional Template"}
                     </td>
                     <td className="py-4 px-4 font-medium text-slate-600">
@@ -194,7 +273,7 @@ export default function CommunicationLogsPage() {
                     <td className="py-4 px-4 text-slate-500 font-mono text-[11px]">
                       {l.timestamp}
                     </td>
-                    <td className="py-4 px-4 text-right">
+                    <td className="py-4 px-4">
                       <span
                         className={`px-2.5 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
                           (l.status || "").toLowerCase() === "delivered" || (l.status || "").toLowerCase() === "read"
@@ -202,13 +281,40 @@ export default function CommunicationLogsPage() {
                             : "bg-rose-50 text-rose-700 border border-rose-200"
                         }`}
                       >
-                        {(l.status || "").toLowerCase() === "delivered" ? (
-                          <CheckCircle2 className="w-3 h-3" />
+                        {(l.status || "").toLowerCase() === "delivered" || (l.status || "").toLowerCase() === "read" ? (
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                         ) : (
-                          <XCircle className="w-3 h-3" />
+                          <XCircle className="w-3 h-3 text-rose-600" />
                         )}
                         {l.status || "SENT"}
                       </span>
+                    </td>
+                    <td className="py-4 px-4 text-right">
+                      {(l.status || "").toLowerCase() === "failed" ? (
+                        <button
+                          type="button"
+                          onClick={() => handleSendAgain(l)}
+                          disabled={retryingId === (l.id || l.messageId || l.phone || l.to)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold transition shadow-xs cursor-pointer disabled:opacity-50"
+                          title="Re-send this message directly via Meta WhatsApp API"
+                        >
+                          {retryingId === (l.id || l.messageId || l.phone || l.to) ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>Sending...</span>
+                            </>
+                          ) : (
+                            <>
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>Send Again</span>
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-emerald-600 font-semibold inline-flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" /> Delivered
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
