@@ -90,7 +90,7 @@ async function saveBroadcastsToDb(broadcasts) {
 }
 
 /**
- * Query distinct real phone numbers from Supabase whatsapp_messages
+ * Query distinct real mobile phone numbers from Supabase whatsapp_messages
  */
 async function getActivePatientPhoneNumbers() {
   try {
@@ -104,13 +104,25 @@ async function getActivePatientPhoneNumbers() {
     if (res.ok) {
       const rows = await res.json();
       if (Array.isArray(rows)) {
-        const unique = [...new Set(rows.map((r) => String(r.phone_number).replace(/\D/g, "").slice(-10)).filter(Boolean))];
+        const unique = [
+          ...new Set(
+            rows
+              .map((r) => String(r.phone_number).replace(/\D/g, "").slice(-10))
+              .filter(
+                (p) =>
+                  p.length === 10 &&
+                  /^[6-9]\d{9}$/.test(p) &&
+                  !/^(\d)\1{9}$/.test(p) &&
+                  p !== "9876543210"
+              )
+          ),
+        ];
         if (unique.length > 0) return unique;
       }
     }
   } catch (e) {}
 
-  return ["8439993033", "7808455740", "7017580125", "6203726406", "7007692554"];
+  return ["8439993033", "7289043777", "7808455740", "7017580125", "6203726406"];
 }
 
 // GET: List all broadcast campaigns and target audience count
@@ -175,6 +187,7 @@ export async function POST(req) {
 
     let sentCount = 0;
     let failedCount = 0;
+    let lastErrorDetails = null;
 
     // If sendImmediately, dispatch to Meta / Insign MultiChannel API
     if (sendImmediately) {
@@ -188,7 +201,7 @@ export async function POST(req) {
         "1355499557651351";
       const dispatchUrl = `https://multichannel.insignsms.com/api/v1/whatsapp/${PHONE_NUMBER_ID}/messages`;
 
-      for (const phone of targetNumbers) {
+      const dispatchOne = async (phone) => {
         let formatted = "91" + phone;
         let resolvedParams = [...templateParams];
         let components = [];
@@ -204,8 +217,10 @@ export async function POST(req) {
               },
             ],
           });
-        } else if (template === "mediconnect_test_message" && resolvedParams.length < 2) {
-          resolvedParams = ["Valued Patient", "MC-" + Math.floor(100000 + Math.random() * 900000)];
+        } else if (template === "mediconnect_test_message" || template.includes("test")) {
+          if (resolvedParams.length < 2) {
+            resolvedParams = ["Valued Patient", "MC-" + Math.floor(100000 + Math.random() * 900000)];
+          }
         }
 
         if (resolvedParams.length > 0) {
@@ -242,7 +257,6 @@ export async function POST(req) {
 
           const data = await res.json().catch(() => ({}));
           if (res.ok && !data.error && data.messages) {
-            sentCount++;
             // Save outgoing record to Supabase
             const msgId = data.messages?.[0]?.id || "wamid.bc." + Date.now();
             await messageStore.addMessage(phone, {
@@ -255,13 +269,31 @@ export async function POST(req) {
               rawTimestamp: Date.now(),
               apiResponse: { ...data, broadcastId: newId, campaignName },
             });
+            return { ok: true, phone, id: msgId };
           } else {
+            const errReason = data.error?.message || data.error?.error_data?.details || data.message || "Dispatch rejected";
+            lastErrorDetails = errReason;
             console.warn(`[Broadcast] Dispatch failed for ${phone}:`, data);
-            failedCount++;
+            return { ok: false, phone, error: errReason };
           }
         } catch (e) {
+          lastErrorDetails = e.message;
           console.error(`[Broadcast] Dispatch error for ${phone}:`, e.message);
-          failedCount++;
+          return { ok: false, phone, error: e.message };
+        }
+      };
+
+      // Dispatch in parallel batches of 5 to avoid Vercel timeouts and respect gateway concurrency
+      const BATCH_SIZE = 5;
+      for (let i = 0; i < targetNumbers.length; i += BATCH_SIZE) {
+        const batch = targetNumbers.slice(i, i + BATCH_SIZE);
+        const results = await Promise.allSettled(batch.map((p) => dispatchOne(p)));
+        for (const r of results) {
+          if (r.status === "fulfilled" && r.value?.ok) {
+            sentCount++;
+          } else {
+            failedCount++;
+          }
         }
       }
     }
@@ -284,10 +316,11 @@ export async function POST(req) {
       templateParams,
       scheduledTime: sendImmediately ? `${nowTimeStr} (Live Dispatched)` : scheduledTime,
       sent: sentCount,
-      delivered: Math.max(0, sentCount - failedCount),
+      delivered: sentCount,
       read: Math.round(sentCount * 0.75),
       failed: failedCount,
-      status: isExecuted ? "COMPLETED" : "QUEUED",
+      status: sendImmediately ? (sentCount > 0 ? "COMPLETED" : "FAILED") : "QUEUED",
+      failureReason: sentCount === 0 && sendImmediately ? lastErrorDetails : undefined,
       targetCount: targetNumbers.length,
       createdAt: new Date().toISOString(),
     };
@@ -301,6 +334,10 @@ export async function POST(req) {
       sentCount,
       failedCount,
       targetCount: targetNumbers.length,
+      error:
+        sentCount === 0 && sendImmediately
+          ? lastErrorDetails || "Broadcast dispatch rejected by Meta gateway"
+          : undefined,
     });
   } catch (err) {
     console.error("[POST /api/whatsapp/broadcasts] Error:", err);

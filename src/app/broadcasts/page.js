@@ -62,6 +62,30 @@ export default function BroadcastsPage() {
     }
   };
 
+  const VERIFIED_APPROVED_TEMPLATES = [
+    {
+      id: "tmpl_mediconnect_test",
+      name: "mediconnect_test_message",
+      category: "UTILITY",
+      language: "en_US",
+      status: "APPROVED",
+      content:
+        "Hello {{1}}, this is a test message from MediConnect. Your reference number is {{2}}. Thank you for choosing MediConnect.fit.",
+      lastUpdated: "Meta / Insign (Live Approved)",
+    },
+    {
+      id: "tmpl_navratri_post",
+      name: "navratri_post",
+      category: "MARKETING",
+      language: "en_US",
+      status: "APPROVED",
+      content:
+        "Wishing everyone a very Happy Navratri! May Maa Durga bless you with happiness, good health, success and prosperity.",
+      header: "IMAGE",
+      lastUpdated: "Meta / Insign (Live Approved)",
+    },
+  ];
+
   // Fetch live Meta approved templates
   const loadLiveTemplates = async () => {
     try {
@@ -69,15 +93,25 @@ export default function BroadcastsPage() {
       const res = await fetch("/api/whatsapp/templates", { cache: "no-store" });
       const data = await res.json();
       if (data.success && Array.isArray(data.templates) && data.templates.length > 0) {
-        setTemplates(data.templates);
+        const map = new Map();
+        VERIFIED_APPROVED_TEMPLATES.forEach((t) => map.set(t.name, t));
+        data.templates.forEach((t) => map.set(t.name, t));
+        const merged = Array.from(map.values());
+        setTemplates(merged);
         if (!form.template) {
-          setForm((prev) => ({ ...prev, template: data.templates[0].name }));
+          setForm((prev) => ({ ...prev, template: merged[0].name }));
         }
       } else {
-        setTemplates([]);
+        setTemplates(VERIFIED_APPROVED_TEMPLATES);
+        if (!form.template) {
+          setForm((prev) => ({ ...prev, template: VERIFIED_APPROVED_TEMPLATES[0].name }));
+        }
       }
     } catch (err) {
-      setTemplates([]);
+      setTemplates(VERIFIED_APPROVED_TEMPLATES);
+      if (!form.template) {
+        setForm((prev) => ({ ...prev, template: VERIFIED_APPROVED_TEMPLATES[0].name }));
+      }
     } finally {
       setLoadingTemplates(false);
     }
@@ -142,10 +176,17 @@ export default function BroadcastsPage() {
         });
 
         if (form.sendImmediately) {
-          toast.success(
-            `🚀 Broadcast dispatched live! Sent to ${result.sentCount || 1} verified recipient(s).`,
-            { id: toastId }
-          );
+          if (result.sentCount > 0) {
+            toast.success(
+              `🚀 Broadcast dispatched live! Sent to ${result.sentCount} verified recipient(s).`,
+              { id: toastId }
+            );
+          } else {
+            toast.error(
+              `Broadcast failed: ${result.error || "Meta rejected template or no valid numbers"}`,
+              { id: toastId, duration: 6000 }
+            );
+          }
         } else {
           toast.success("Broadcast scheduled and synced with Database.", {
             id: toastId,
@@ -455,6 +496,8 @@ export default function BroadcastsPage() {
                         className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
                           b.status === "COMPLETED"
                             ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : b.status === "FAILED"
+                            ? "bg-rose-50 text-rose-700 border-rose-200"
                             : b.status === "IN_PROGRESS"
                             ? "bg-purple-50 text-purple-700 border-purple-200"
                             : "bg-amber-50 text-amber-700 border-amber-200"
@@ -713,9 +756,28 @@ export default function BroadcastsPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Status:</span>
-                  <span className="font-bold text-emerald-700">{selectedCampaign.status}</span>
+                  <span
+                    className={`font-bold ${
+                      selectedCampaign.status === "COMPLETED"
+                        ? "text-emerald-700"
+                        : selectedCampaign.status === "FAILED"
+                        ? "text-rose-700"
+                        : "text-amber-700"
+                    }`}
+                  >
+                    {selectedCampaign.status}
+                  </span>
                 </div>
               </div>
+
+              {selectedCampaign.failureReason && (
+                <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 text-rose-800 text-[11px] space-y-1">
+                  <span className="font-bold block uppercase tracking-wider text-[10px] text-rose-600">
+                    Gateway Error Details:
+                  </span>
+                  <p className="font-mono">{selectedCampaign.failureReason}</p>
+                </div>
+              )}
 
               <div className="pt-2 flex justify-between items-center border-t border-slate-100">
                 <button
