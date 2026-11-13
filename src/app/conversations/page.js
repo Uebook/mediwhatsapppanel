@@ -409,7 +409,13 @@ export default function ConversationsPage() {
           const parsed = JSON.parse(saved) || [];
           parsed.forEach((c) => {
             const digits = (c.mobile || "").replace(/\D/g, "").slice(-10);
-            if (digits) savedMap[digits] = c;
+            if (digits) {
+              savedMap[digits] = c;
+              // Preserve newly initiated chats that don't have database messages yet
+              if (!data.allMessages || !data.allMessages[digits]) {
+                loadedConvs.push(c);
+              }
+            }
           });
         } catch (e) {}
       }
@@ -560,7 +566,11 @@ export default function ConversationsPage() {
           if (pending.length > 0) pendingMap[c.id] = pending;
         });
 
-        return loadedConvs.map((c) => {
+        // Preserve newly created chats that don't have database messages yet
+        const loadedIds = new Set(loadedConvs.map((c) => c.id));
+        const newLocalChats = prev.filter((c) => !loadedIds.has(c.id));
+
+        const updatedLoaded = loadedConvs.map((c) => {
           if (pendingMap[c.id]) {
             const serverIds = new Set((c.messages || []).map((m) => m.id));
             const stillPending = pendingMap[c.id].filter((m) => !serverIds.has(m.id));
@@ -568,6 +578,8 @@ export default function ConversationsPage() {
           }
           return c;
         });
+
+        return [...newLocalChats, ...updatedLoaded];
       });
 
       setSelectedId((prev) => {
@@ -584,8 +596,9 @@ export default function ConversationsPage() {
             }
           }
         }
-        if (prev && loadedConvs.some((c) => c.id === prev)) {
-          return prev; // PRESERVE currently selected conversation!
+        // Always preserve the currently selected conversation ID (including a newly opened chat)
+        if (prev) {
+          return prev;
         }
         return loadedConvs.length > 0 ? loadedConvs[0].id : null;
       });
@@ -743,8 +756,14 @@ export default function ConversationsPage() {
       messages: [],
     };
 
-    setConversations([newConv, ...conversations]);
-    handleSelectConversation(newId);
+    const updatedConvs = [newConv, ...conversations.filter((c) => c.id !== newId)];
+    setConversations(updatedConvs);
+    try {
+      localStorage.setItem("mediconnect_wa_live_conversations", JSON.stringify(updatedConvs));
+    } catch (e) {}
+    setSelectedId(newId);
+    setMobileShowChat(true);
+    markAsRead(newId);
     setShowNewChatModal(false);
     setNewPhoneNumber("");
     setNewPatientName("");
